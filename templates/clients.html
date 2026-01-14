@@ -398,7 +398,7 @@
             <td>{{ device.port }}</td>
             <td>{{ device.unit_id }}</td>
             <td>{{ device.server_unit_id }}</td>
-            <td>{{ device.data_collection }}</td>
+            <td>{{ device.group_data_collection if device.em_group and device.group_data_collection else device.data_collection if device.data_collection else '-' }}</td>
             <td>{{ device.registers.active_power.address }}</td>
             <td>{{ device.registers.active_power.offset if device.registers.active_power.offset else '-' }}</td>
             <td>{{ device.registers.active_power.format }}</td>
@@ -433,6 +433,7 @@
       </div>
       <form id="deviceForm">
         <input type="hidden" id="originalServerUnitId" value="">
+        <input type="hidden" id="originalEmGroup" value="">
 
         <div class="form-group">
           <label for="project_nr">Project Nummer</label>
@@ -485,7 +486,15 @@
           <input type="text" id="data_collection" name="data_collection" required placeholder="f.eks. Solbjerg_em_data">
         </div>
 
-
+        <div class="form-group" style="background: #e8f5e9; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+          <label for="device_preset">⚡ Vælg Enhedstype (auto-udfyld registre)</label>
+          <select id="device_preset" name="device_preset" onchange="applyDevicePreset(this.value)">
+            <option value="">-- Manuel konfiguration --</option>
+            <option value="carlo_gavazzi">Carlo Gavazzi EM24</option>
+            <option value="siemens_pac2200">Siemens PAC2200</option>
+          </select>
+          <small style="color: #666;">Vælg en enhedstype for automatisk at udfylde register-adresser, formater og scales</small>
+        </div>
 
         <div class="register-group">
           <h3>Active Power Register</h3>
@@ -658,6 +667,12 @@
               <option value="input">input</option>
             </select>
             <small style="color: #666;">Gælder for alle EM'er i gruppen</small>
+          </div>
+
+          <div class="form-group">
+            <label for="multi_group_data_collection">Group Data Collection *</label>
+            <input type="text" id="multi_group_data_collection" name="multi_group_data_collection" required placeholder="f.eks. alssund_total_data">
+            <small style="color: #666;">Samlet collection hvor summerede værdier gemmes (kun én collection for hele gruppen)</small>
           </div>
         </div>
 
@@ -853,6 +868,8 @@
 
       // Store original server_unit_id for update
       document.getElementById('originalServerUnitId').value = device.server_unit_id;
+      // Store original em_group to preserve it on update
+      document.getElementById('originalEmGroup').value = device.em_group || '';
 
       // Reset validation
       document.getElementById('server_unit_id').classList.remove('error');
@@ -958,6 +975,11 @@
 
       if (isEditMode) {
         formData.original_server_unit_id = parseInt(document.getElementById('originalServerUnitId').value);
+        // Preserve em_group if device was part of one
+        const originalEmGroup = document.getElementById('originalEmGroup').value;
+        if (originalEmGroup) {
+          formData.em_group = originalEmGroup;
+        }
       }
 
       fetch(url, {
@@ -1013,6 +1035,74 @@
         });
     }
 
+    // ============ DEVICE PRESETS ============
+    const DEVICE_PRESETS = {
+      carlo_gavazzi: {
+        name: 'Carlo Gavazzi EM24',
+        active_power: { address: 40, reading: 'holding', format: 'int32', scale: 0.1 },
+        total_import: { address: 52, reading: 'holding', format: 'int32', scale: 100 },
+        total_export: { address: 78, reading: 'holding', format: 'int32', scale: 100 }
+      },
+      siemens_pac2200: {
+        name: 'Siemens PAC2200',
+        active_power: { address: 65, reading: 'holding', format: 'float32_1', scale: 1 },
+        total_import: { address: 801, reading: 'holding', format: 'double', scale: 1 },
+        total_export: { address: 809, reading: 'holding', format: 'double', scale: 1 }
+      }
+    };
+
+    // Apply preset to normal client modal
+    function applyDevicePreset(presetKey) {
+      if (!presetKey) return;
+      
+      const preset = DEVICE_PRESETS[presetKey];
+      if (!preset) return;
+
+      // Active Power
+      document.getElementById('register_address').value = preset.active_power.address;
+      document.getElementById('register_reading').value = preset.active_power.reading;
+      document.getElementById('register_format').value = preset.active_power.format;
+      document.getElementById('register_scale').value = preset.active_power.scale;
+
+      // Total Import
+      document.getElementById('import_address').value = preset.total_import.address;
+      document.getElementById('import_reading').value = preset.total_import.reading;
+      document.getElementById('import_format').value = preset.total_import.format;
+      document.getElementById('import_scale').value = preset.total_import.scale;
+
+      // Total Export
+      document.getElementById('export_address').value = preset.total_export.address;
+      document.getElementById('export_reading').value = preset.total_export.reading;
+      document.getElementById('export_format').value = preset.total_export.format;
+      document.getElementById('export_scale').value = preset.total_export.scale;
+    }
+
+    // Apply preset to Multi-EM device
+    function applyEmPreset(emIndex, presetKey) {
+      if (!presetKey) return;
+      
+      const preset = DEVICE_PRESETS[presetKey];
+      if (!preset) return;
+
+      // Active Power
+      document.getElementById(`em${emIndex}_ap_addr`).value = preset.active_power.address;
+      document.getElementById(`em${emIndex}_ap_reading`).value = preset.active_power.reading;
+      document.getElementById(`em${emIndex}_ap_format`).value = preset.active_power.format;
+      document.getElementById(`em${emIndex}_ap_scale`).value = preset.active_power.scale;
+
+      // Total Import
+      document.getElementById(`em${emIndex}_imp_addr`).value = preset.total_import.address;
+      document.getElementById(`em${emIndex}_imp_reading`).value = preset.total_import.reading;
+      document.getElementById(`em${emIndex}_imp_format`).value = preset.total_import.format;
+      document.getElementById(`em${emIndex}_imp_scale`).value = preset.total_import.scale;
+
+      // Total Export
+      document.getElementById(`em${emIndex}_exp_addr`).value = preset.total_export.address;
+      document.getElementById(`em${emIndex}_exp_reading`).value = preset.total_export.reading;
+      document.getElementById(`em${emIndex}_exp_format`).value = preset.total_export.format;
+      document.getElementById(`em${emIndex}_exp_scale`).value = preset.total_export.scale;
+    }
+
     // ============ MULTI-EM MODAL FUNCTIONS ============
     let emDeviceCount = 0;
     let multiEmExistingDevices = [];
@@ -1052,6 +1142,15 @@
 
           <h3 style="font-size: 1rem; margin-bottom: 0.8rem;">⚡ EM #${emDeviceCount}</h3>
 
+          <div class="form-group" style="background: #e8f5e9; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.8rem;">
+            <label for="em${emDeviceCount}_preset">Enhedstype</label>
+            <select id="em${emDeviceCount}_preset" onchange="applyEmPreset(${emDeviceCount}, this.value)">
+              <option value="">-- Manuel --</option>
+              <option value="carlo_gavazzi">Carlo Gavazzi EM24</option>
+              <option value="siemens_pac2200">Siemens PAC2200</option>
+            </select>
+          </div>
+
           <div class="form-group">
             <label for="em${emDeviceCount}_site">Site Navn *</label>
             <input type="text" id="em${emDeviceCount}_site" required placeholder="f.eks. Alssund Gymnasium EM1">
@@ -1075,11 +1174,6 @@
               <label for="em${emDeviceCount}_unit_id">Unit ID *</label>
               <input type="number" id="em${emDeviceCount}_unit_id" required value="1">
             </div>
-          </div>
-
-          <div class="form-group">
-            <label for="em${emDeviceCount}_data_collection">Data Collection *</label>
-            <input type="text" id="em${emDeviceCount}_data_collection" required placeholder="f.eks. alssund_em1_data">
           </div>
 
           <div style="background: white; padding: 0.8rem; border-radius: 6px; margin-bottom: 0.5rem;">
@@ -1218,6 +1312,7 @@
       const emGroup = document.getElementById('multi_em_group').value.trim();
       const serverUnitId = parseInt(document.getElementById('multi_server_unit_id').value);
       const multiReading = document.getElementById('multi_reading').value;
+      const groupDataCollection = document.getElementById('multi_group_data_collection').value.trim();
 
       // Validate server_unit_id
       const conflictingDevice = multiEmExistingDevices.find(d =>
@@ -1298,7 +1393,7 @@
           server_unit_id: serverUnitId,
           project_nr: projectNr,
           em_group: emGroup,
-          data_collection: document.getElementById(`em${i}_data_collection`).value,
+          group_data_collection: groupDataCollection,
           registers: registers
         };
 

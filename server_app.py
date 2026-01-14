@@ -369,8 +369,13 @@ def add_device():
             return jsonify({'success': False, 'error': 'Invalid reading type. Must be "holding" or "input"'}), 400
         device_data['reading'] = reading
 
-        # Validate required fields
-        required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'data_collection', 'registers']
+        # For em_group devices, use group_data_collection instead of data_collection.
+        # Individual data_collection is not required for em_group members.
+        if device_data.get('em_group'):
+            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'group_data_collection', 'registers']
+        else:
+            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'data_collection', 'registers']
+
         for field in required_fields:
             if field not in device_data:
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400

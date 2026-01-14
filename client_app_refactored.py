@@ -147,6 +147,12 @@ class ThrottledMongoEventReporter(ErrorReporter):
     - Use a stable primary key: (site, category, key)
     - Increment `count` and update `last_seen`.
     - Write at most once per interval per event key by buffering in memory.
+    - DYNAMIC INTERVAL: Increases interval based on error count to reduce spam:
+      - 1-9 errors: 60 seconds
+      - 10-49 errors: 5 minutes
+      - 50-99 errors: 15 minutes
+      - 100-499 errors: 1 hour
+      - 500+ errors: 2 hours
 
     Collection schema (service_events)
     ---------------------------------
@@ -170,15 +176,34 @@ class ThrottledMongoEventReporter(ErrorReporter):
         self._coll.create_index([("site", 1), ("category", 1), ("key", 1)], unique=True, background=True)
         self._coll.create_index([("last_seen", -1)], background=True)
 
+    def _get_dynamic_interval(self, total_count: int) -> int:
+        """Return write interval in seconds based on error count.
+        
+        Reduces DB writes for persistent/recurring errors.
+        Resets after 60 errors to start fresh.
+        """
+        if total_count < 10:
+            return 300         # 5 minutes
+        elif total_count < 50:
+            return 3600        # 1 hour
+        else:
+            return 7200        # 2 hours (50-60, then reset)
+
     def record(self, event: ErrorEvent, interval_seconds: int = 60) -> None:
-        key_text = event.message if len(event.message) <= 240 else event.message[:240]
+        # Normalize the message to group similar errors (e.g., different timestamps)
+        normalized_msg = normalize_error_message(event.message)
+        key_text = normalized_msg if len(normalized_msg) <= 240 else normalized_msg[:240]
         event_id = f"{event.site}|{event.category}|{key_text}"
 
         now = time.time()
-        st = self._state.setdefault(event_id, {"pending": 0, "last_db": 0.0})
+        st = self._state.setdefault(event_id, {"pending": 0, "last_db": 0.0, "total_count": 0})
         st["pending"] = int(st["pending"]) + 1
+        st["total_count"] = int(st["total_count"]) + 1
 
-        should_write = float(st["last_db"]) == 0.0 or (now - float(st["last_db"]) >= interval_seconds)
+        # Use dynamic interval based on total error count
+        effective_interval = self._get_dynamic_interval(int(st["total_count"]))
+
+        should_write = float(st["last_db"]) == 0.0 or (now - float(st["last_db"]) >= effective_interval)
         if not should_write:
             return
 
@@ -191,7 +216,7 @@ class ThrottledMongoEventReporter(ErrorReporter):
             self._coll.update_one(
                 {"site": event.site, "category": event.category, "key": key_text},
                 {
-                    "$setOnInsert": {"first_seen": now_dt, "count": 0},
+                    "$setOnInsert": {"first_seen": now_dt},
                     "$set": {"last_seen": now_dt, "message": event.message, "severity": event.severity},
                     "$inc": {"count": pending},
                 },
@@ -199,9 +224,13 @@ class ThrottledMongoEventReporter(ErrorReporter):
             )
             st["pending"] = 0
             st["last_db"] = now
-        except Exception:
-            # Monitoring must never break polling.
-            pass
+            
+            # Reset counter after 60 to start fresh cycle
+            if int(st["total_count"]) >= 60:
+                st["total_count"] = 0
+        except Exception as e:
+            # Monitoring must never break polling, but log for debugging.
+            print(f"[DEBUG] service_events write failed: {e}")
 
 
 class CompositeReporter(ErrorReporter):
@@ -228,6 +257,33 @@ def categorize_message(message: str) -> tuple[str, str]:
     if "forbinde" in msg_l or "connect" in msg_l:
         return "connect", "error"
     return "runtime", "error"
+
+
+import re
+
+# Patterns to normalize in error messages (remove variable parts)
+_NORMALIZE_PATTERNS = [
+    # Remove "0.000012 seconds" or similar timestamps
+    (re.compile(r'\d+\.\d+ seconds'), 'X seconds'),
+    # Remove specific byte counts that may vary
+    (re.compile(r'read of \d+ bytes'), 'read of N bytes'),
+    # Remove IP:port variations in parentheses (keep structure)
+    (re.compile(r'ModbusTcpClient\([^)]+\)'), 'ModbusTcpClient(...)'),
+]
+
+
+def normalize_error_message(message: str) -> str:
+    """Normalize error message by removing variable parts (timestamps, etc.).
+    
+    This ensures that errors like:
+      "Connection closed 0.000010 seconds into read"
+      "Connection closed 0.000012 seconds into read"
+    are treated as the same error for counting purposes.
+    """
+    result = message
+    for pattern, replacement in _NORMALIZE_PATTERNS:
+        result = pattern.sub(replacement, result)
+    return result
 
 
 # --------------------------------------------------------------------
@@ -957,19 +1013,15 @@ class DevicePoller:
                            total_exp: float,
                            meta: EnergyMeta,
                            interval_seconds: float) -> None:
-        """Print status periodically or when there are invalid readings."""
+        """Print status only when there are invalid readings (errors/warnings)."""
 
+        # Only print when there are actual problems
+        if not meta.has_invalid_data:
+            return
+
+        # Rate limit console output: max once per 60 seconds per device
         now = time.time()
-        should_print = False
-
-        if meta.has_invalid_data:
-            should_print = True
-        elif interval_seconds > max(SLEEP_SECONDS_RANGE) * 2:
-            should_print = True
-        elif now - state.last_debug_print > 300:
-            should_print = True
-
-        if not should_print:
+        if now - state.last_debug_print < 60:
             return
 
         state.last_debug_print = now
@@ -980,13 +1032,11 @@ class DevicePoller:
             invalid_flags.append("IMP")
         if meta.export_invalid:
             invalid_flags.append("EXP")
-        invalid_str = "None" if not invalid_flags else ",".join(invalid_flags)
 
-        status_icon = "⚠️" if invalid_flags else "✅"
         print(
-            f"{status_icon} {state.site}: "
+            f"⚠️ {state.site}: "
             f"AP={ap:.1f}W Imp={total_imp:.1f}Wh Exp={total_exp:.1f}Wh "
-            f"(interval={interval_seconds:.1f}s, invalid={invalid_str})"
+            f"(interval={interval_seconds:.1f}s, invalid={",".join(invalid_flags)})"
         )
 
 
@@ -1180,17 +1230,15 @@ class EmGroupPoller:
                            meta: EnergyMeta,
                            interval_seconds: float,
                            success_count: int) -> None:
+        """Print status only when there are invalid readings (errors/warnings)."""
+
+        # Only print when there are actual problems
+        if not meta.has_invalid_data:
+            return
+
+        # Rate limit console output: max once per 60 seconds per group
         now = time.time()
-        should_print = False
-
-        if meta.has_invalid_data:
-            should_print = True
-        elif interval_seconds > max(SLEEP_SECONDS_RANGE) * 2:
-            should_print = True
-        elif now - state.last_debug_print > 300:
-            should_print = True
-
-        if not should_print:
+        if now - state.last_debug_print < 60:
             return
 
         state.last_debug_print = now
@@ -1201,13 +1249,11 @@ class EmGroupPoller:
             invalid_flags.append("IMP")
         if meta.export_invalid:
             invalid_flags.append("EXP")
-        invalid_str = "None" if not invalid_flags else ",".join(invalid_flags)
 
-        status_icon = "⚠️" if invalid_flags else "✅"
         print(
-            f"{status_icon} {state.group_name} (EM-group): "
+            f"⚠️ {state.group_name} (EM-group): "
             f"AP={total_ap:.1f}W Imp={total_imp_sum:.1f}Wh Exp={total_exp_sum:.1f}Wh "
-            f"(interval={interval_seconds:.1f}s, invalid={invalid_str}, EMs={success_count})"
+            f"(interval={interval_seconds:.1f}s, invalid={",".join(invalid_flags)}, EMs={success_count})"
         )
 
 
@@ -1304,13 +1350,19 @@ class StateFactory:
             if not group_devices:
                 continue
 
-            # Use the first member to decide collection naming (compatible with original behavior).
+            # Use group_data_collection if available, otherwise fall back to em_group name.
+            # Individual EM devices in a group do NOT need their own data_collection.
             first = group_devices[0]
+            group_collection_name = (
+                first.get("group_data_collection")
+                or first.get("data_collection")  # Backward compatibility
+                or group_name  # Ultimate fallback: use group name as collection
+            )
             group_device_cfg = {
                 "site": group_name,
                 "project_nr": first.get("project_nr", ""),
                 "name": group_name,
-                "data_collection": first.get("data_collection"),
+                "data_collection": group_collection_name,
             }
             coll = self._repo.get_collection(group_device_cfg)
             last_imp, last_exp = self._repo.load_last_totals(coll)
