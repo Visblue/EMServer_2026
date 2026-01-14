@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="da">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Klient Administration</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c3e50, #bdc3c7);
+      color: #333;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1760px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+
+
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #ecf0f1;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #2c3e50;
+    }
+
+    .header-buttons {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .btn {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: #3498db;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #2980b9;
+    }
+
+    .btn-back {
+      background: #95a5a6;
+      color: #fff;
+    }
+
+    .btn-back:hover {
+      background: #7f8c8d;
+    }
+
+    .btn-edit {
+      background: #f39c12;
+      color: #fff;
+      font-size: 0.9rem;
+      padding: 0.4rem 0.8rem;
+    }
+
+    .btn-edit:hover {
+      background: #e67e22;
+    }
+
+    .btn-delete {
+      background: #e74c3c;
+      color: #fff;
+      font-size: 0.9rem;
+      padding: 0.4rem 0.8rem;
+    }
+
+    .btn-delete:hover {
+      background: #c0392b;
+    }
+
+    .clients-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: -200px;
+      overflow-x: auto;
+      scale: 0.93;
+      display: block;
+    }
+
+    .clients-table table {
+      width: 100%;
+    }
+
+    .clients-table th,
+    .clients-table td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .clients-table th {
+      background: #34495e;
+      color: #fff;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 1.5rem;
+    }
+
+    .clients-table th:hover {
+      background: #2c3e50;
+    }
+
+    .clients-table th.sortable::after {
+      content: '⇅';
+      position: absolute;
+      right: 0.5rem;
+      opacity: 0.5;
+    }
+
+    .clients-table th.sort-asc::after {
+      content: '▲';
+      opacity: 1;
+    }
+
+    .clients-table th.sort-desc::after {
+      content: '▼';
+      opacity: 1;
+    }
+
+    .clients-table tr:hover {
+      background: #f9f9f9;
+    }
+
+    .clients-table tr.pv-row {
+      background: #ffe6cc;
+    }
+
+    .clients-table tr.pv-row:hover {
+      background: #ffd9b3;
+    }
+
+    .clients-table tr.multi-em-row {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+
+    .clients-table tr.multi-em-row:hover {
+      background-color: #ffcdd2;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .no-clients {
+      text-align: center;
+      padding: 3rem;
+      color: #7f8c8d;
+      font-size: 1.1rem;
+    }
+
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+      background-color: #fff;
+      margin: 3% auto;
+      padding: 2rem;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 700px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-header h2 {
+      color: #2c3e50;
+      font-size: 1.5rem;
+    }
+
+    .close-modal {
+      color: #aaa;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      background: none;
+    }
+
+    .close-modal:hover {
+      color: #000;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #34495e;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+
+    .form-group input.error {
+      border-color: #e74c3c;
+    }
+
+    .error-message {
+      color: #e74c3c;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+      display: none;
+    }
+
+    .error-message.show {
+      display: block;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .form-actions button {
+      flex: 1;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-submit {
+      background: #27ae60;
+      color: #fff;
+    }
+
+    .btn-submit:hover {
+      background: #1e8449;
+    }
+
+    .btn-cancel {
+      background: #95a5a6;
+      color: #fff;
+    }
+
+    .btn-cancel:hover {
+      background: #7f8c8d;
+    }
+
+    .register-group {
+      border: 1px solid #ddd;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      background: #f9f9f9;
+    }
+
+    .register-group h3 {
+      margin-bottom: 1rem;
+      color: #2c3e50;
+      font-size: 1.1rem;
+    }
+
+    .status-badge {
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .status-active {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Klient Administration</h1>
+      <div class="header-buttons">
+        <button class="btn btn-primary" onclick="openAddModal()">+ Tilføj Ny Klient</button>
+        <button class="btn btn-primary" onclick="openMultiEmModal()" style="background: #27ae60;">⚡ Tilføj
+          Multi-EM</button>
+        <a href="{{ url_for('index') }}" class="btn btn-back">← Tilbage til Monitoring</a>
+      </div>
+    </header>
+
+    <div class="clients-table">
+      {% if devices|length > 0 %}
+      <table id="clientsTable">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortTable(0)">Project Nr</th>
+            <th class="sortable" onclick="sortTable(1)">Site</th>
+            <th class="sortable" onclick="sortTable(2)">Navn</th>
+            <th class="sortable" onclick="sortTable(3)">IP Adresse</th>
+            <th class="sortable" onclick="sortTable(4)">Port</th>
+            <th class="sortable" onclick="sortTable(5)">Unit ID</th>
+            <th class="sortable" onclick="sortTable(6)">Server Unit ID</th>
+            <th class="sortable" onclick="sortTable(7)">Data Collection</th>
+            <th class="sortable" onclick="sortTable(8)">Active Power Adr</th>
+            <th class="sortable" onclick="sortTable(9)">AP Offset [W]</th>
+            <th class="sortable" onclick="sortTable(10)">Format</th>
+            <th class="sortable" onclick="sortTable(11)">Total Import Adr</th>
+            <th class="sortable" onclick="sortTable(12)">Import Format</th>
+            <th class="sortable" onclick="sortTable(13)">Total Export Adr</th>
+            <th class="sortable" onclick="sortTable(14)">Export Format</th>
+            <th class="sortable" onclick="sortTable(15)">Read Type</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for device in devices %}
+          <tr class="{% if 'PV' in device.name.upper() %}pv-row{% elif device.em_group %}multi-em-row{% endif %}">
+            <td>{{ device.project_nr if device.project_nr else '-' }}</td>
+            <td>{{ device.site }}</td>
+            <td>{{ device.name }}</td>
+            <td>{{ device.ip }}</td>
+            <td>{{ device.port }}</td>
+            <td>{{ device.unit_id }}</td>
+            <td>{{ device.server_unit_id }}</td>
+            <td>{{ device.data_collection }}</td>
+            <td>{{ device.registers.active_power.address }}</td>
+            <td>{{ device.registers.active_power.offset if device.registers.active_power.offset else '-' }}</td>
+            <td>{{ device.registers.active_power.format }}</td>
+            <td>{{ device.registers.total_import.address if device.registers.total_import else '-' }}</td>
+            <td>{{ device.registers.total_import.format if device.registers.total_import else '-' }}</td>
+            <td>{{ device.registers.total_export.address if device.registers.total_export else '-' }}</td>
+            <td>{{ device.registers.total_export.format if device.registers.total_export else '-' }}</td>
+            <td>{{ device.reading if device.reading else (device.table if device.table else 'holding') }}</td>
+            <td class="actions">
+              <button class="btn btn-edit" onclick="editDevice(this)" data-device='{{ device|tojson }}'>Rediger</button>
+              <button class="btn btn-delete" onclick="deleteDevice(this)" data-unit-id="{{ device.server_unit_id }}"
+                data-site="{{ device.site }}">Slet</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="no-clients">
+        <p>Ingen klienter fundet. Klik på "Tilføj Ny Klient" for at komme i gang.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Add/Edit Modal -->
+  <div id="deviceModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Tilføj Ny Klient</h2>
+        <button class="close-modal" onclick="closeModal()">&times;</button>
+      </div>
+      <form id="deviceForm">
+        <input type="hidden" id="originalServerUnitId" value="">
+
+        <div class="form-group">
+          <label for="project_nr">Project Nummer</label>
+          <input type="text" id="project_nr" name="project_nr" placeholder="f.eks. P12345 (valgfrit)">
+        </div>
+
+        <div class="form-group">
+          <label for="site">Site Navn *</label>
+          <input type="text" id="site" name="site" required placeholder="f.eks. Solbjerg_em">
+        </div>
+
+        <div class="form-group">
+          <label for="name">Device Navn *</label>
+          <input type="text" id="name" name="name" required placeholder="f.eks. Siemens">
+        </div>
+
+        <div class="form-group">
+          <label for="ip">IP Adresse *</label>
+          <input type="text" id="ip" name="ip" required placeholder="f.eks. 127.1.5.17">
+        </div>
+
+        <div class="form-group">
+          <label for="port">Port *</label>
+          <input type="number" id="port" name="port" required value="502">
+        </div>
+
+        <div class="form-group">
+          <label for="reading">Read Type *</label>
+          <select id="reading" name="reading" required>
+            <option value="holding" selected>holding</option>
+            <option value="input">input</option>
+          </select>
+          <small style="color: #666;">Vælg om klienten skal læse Holding Registers (4x) eller Input Registers (3x)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="unit_id">Unit ID *</label>
+          <input type="number" id="unit_id" name="unit_id" required placeholder="f.eks. 1">
+        </div>
+
+        <div class="form-group">
+          <label for="server_unit_id">Server Unit ID *</label>
+          <input type="number" id="server_unit_id" name="server_unit_id" required placeholder="f.eks. 23"
+            oninput="validateServerUnitId()">
+          <div id="serverUnitIdError" class="error-message">Dette Server Unit ID er allerede i brug</div>
+        </div>
+
+        <div class="form-group">
+          <label for="data_collection">Data Collection Navn *</label>
+          <input type="text" id="data_collection" name="data_collection" required placeholder="f.eks. Solbjerg_em_data">
+        </div>
+
+
+
+        <div class="register-group">
+          <h3>Active Power Register</h3>
+          <div class="form-group">
+            <label for="register_address">Register Adresse *</label>
+            <input type="number" id="register_address" name="register_address" required placeholder="f.eks. 65">
+          </div>
+
+          <div class="form-group">
+            <label for="register_reading">Read Type *</label>
+            <select id="register_reading" name="register_reading" required>
+              <option value="holding" selected>holding</option>
+              <option value="input">input</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="register_format">Format *</label>
+            <select id="register_format" name="register_format" required>
+              <option value="float32_1">float32_1</option>
+              <option value="float32_2">float32_2</option>
+              <option value="int16">int16</option>
+              <option value="uint16">uint16</option>
+              <option value="int32">int32</option>
+              <option value="uint32">uint32</option>
+              <option value="double">double</option>
+              <option value="double_little">double_little</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="register_scale">Scale *</label>
+            <input type="number" id="register_scale" name="register_scale" required value="1" step="0.1">
+          </div>
+
+          <div class="form-group">
+            <label for="register_offset">Offset [W] (valgfrit)</label>
+            <input type="number" id="register_offset" name="register_offset" placeholder="f.eks. 16000" step="0.01">
+            <small style="color: #666;">Lægges til Active Power efter (raw * scale)</small>
+          </div>
+        </div>
+
+        <div class="register-group">
+          <h3>Total Import Register (valgfrit)</h3>
+          <div class="form-group">
+            <label for="import_address">Register Adresse</label>
+            <input type="number" id="import_address" name="import_address" placeholder="f.eks. 100">
+          </div>
+
+          <div class="form-group">
+            <label for="import_reading">Read Type</label>
+            <select id="import_reading" name="import_reading">
+              <option value="">-- Brug device default --</option>
+              <option value="holding" selected>holding</option>
+              <option value="input">input</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="import_format">Format</label>
+            <select id="import_format" name="import_format">
+              <option value="">-- Vælg format --</option>
+              <option value="float32_1">float32_1</option>
+              <option value="float32_2">float32_2</option>
+              <option value="int16">int16</option>
+              <option value="uint16">uint16</option>
+              <option value="int32">int32</option>
+              <option value="uint32">uint32</option>
+              <option value="double">double</option>
+              <option value="double_little">double_little</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="import_scale">Scale</label>
+            <input type="number" id="import_scale" name="import_scale" value="1" step="0.1">
+          </div>
+
+          <div class="form-group">
+            <label for="import_offset">Offset [Wh] (valgfrit)</label>
+            <input type="number" id="import_offset" name="import_offset" placeholder="f.eks. 0" step="0.01">
+            <small style="color: #666;">Lægges til Total Import efter (raw * scale). Brug kun hvis måleren har en konstant forskydning.</small>
+          </div>
+        </div>
+
+        <div class="register-group">
+          <h3>Total Export Register (valgfrit)</h3>
+          <div class="form-group">
+            <label for="export_address">Register Adresse</label>
+            <input type="number" id="export_address" name="export_address" placeholder="f.eks. 200">
+          </div>
+
+          <div class="form-group">
+            <label for="export_reading">Read Type</label>
+            <select id="export_reading" name="export_reading">
+              <option value="">-- Brug device default --</option>
+              <option value="holding" selected>holding</option>
+              <option value="input">input</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="export_format">Format</label>
+            <select id="export_format" name="export_format">
+              <option value="">-- Vælg format --</option>
+              <option value="float32_1">float32_1</option>
+              <option value="float32_2">float32_2</option>
+              <option value="int16">int16</option>
+              <option value="uint16">uint16</option>
+              <option value="int32">int32</option>
+              <option value="uint32">uint32</option>
+              <option value="double">double</option>
+              <option value="double_little">double_little</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="export_scale">Scale</label>
+            <input type="number" id="export_scale" name="export_scale" value="1" step="0.1">
+          </div>
+
+          <div class="form-group">
+            <label for="export_offset">Offset [Wh] (valgfrit)</label>
+            <input type="number" id="export_offset" name="export_offset" placeholder="f.eks. 0" step="0.01">
+            <small style="color: #666;">Lægges til Total Export efter (raw * scale)</small>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" onclick="closeModal()">Annuller</button>
+          <button type="submit" class="btn-submit" id="submitBtn">Tilføj Klient</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal for Adding Multi-EM Client -->
+  <div id="addMultiEmModal" class="modal">
+    <div class="modal-content">
+      <h2 style="margin-bottom: 1rem;">🔌 Tilføj Multi-EM Klient</h2>
+      <p style="color: #666; margin-bottom: 1.5rem;">Tilføj flere EM'er der summeres og skrives til samme server unit ID
+      </p>
+
+      <form id="addMultiEmForm">
+        <!-- Fælles info -->
+        <div style="background: #e3f2fd; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+          <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">📋 Fælles Information</h3>
+
+          <div class="form-group">
+            <label for="multi_project_nr">Project Nr *</label>
+            <input type="number" id="multi_project_nr" name="multi_project_nr" required placeholder="f.eks. 10850">
+          </div>
+
+          <div class="form-group">
+            <label for="multi_em_group">EM Group Navn *</label>
+            <input type="text" id="multi_em_group" name="multi_em_group" required placeholder="f.eks. alssund_total">
+            <small style="color: #666;">Dette navn bruges til at gruppere EM'erne</small>
+          </div>
+
+          <div class="form-group">
+            <label for="multi_server_unit_id">Server Unit ID *</label>
+            <input type="number" id="multi_server_unit_id" name="multi_server_unit_id" required placeholder="f.eks. 15">
+            <small style="color: #666;">Alle EM'er skrives til dette unit ID</small>
+          </div>
+
+          <div class="form-group">
+            <label for="multi_reading">Read Type *</label>
+            <select id="multi_reading" name="multi_reading" required>
+              <option value="holding" selected>holding</option>
+              <option value="input">input</option>
+            </select>
+            <small style="color: #666;">Gælder for alle EM'er i gruppen</small>
+          </div>
+        </div>
+
+        <!-- EM Liste -->
+        <div id="emDevicesList">
+          <!-- EM devices tilføjes dynamisk her -->
+        </div>
+
+        <button type="button" class="btn btn-primary" onclick="addEmDevice()" style="width: 100%; margin: 1rem 0;">
+          + Tilføj EM
+        </button>
+
+        <div class="form-actions" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+          <button type="button" class="btn-cancel" onclick="closeMultiEmModal()" style="flex: 1;">Annuller</button>
+          <button type="submit" class="btn-submit" style="flex: 1;">Tilføj Alle EM'er</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let isEditMode = false;
+    let currentSortColumn = -1;
+    let currentSortDirection = 'asc';
+    let existingServerUnitIds = [];
+
+    // Populate existing server unit IDs from table
+    function loadExistingServerUnitIds() {
+      const table = document.getElementById('clientsTable');
+      if (table) {
+        const rows = table.querySelectorAll('tbody tr');
+        existingServerUnitIds = Array.from(rows).map(row => {
+          return parseInt(row.cells[6].textContent.trim());
+        });
+      }
+    }
+
+    // Validate server unit ID
+    function validateServerUnitId() {
+      const input = document.getElementById('server_unit_id');
+      const errorMsg = document.getElementById('serverUnitIdError');
+      const submitBtn = document.getElementById('submitBtn');
+      const value = parseInt(input.value);
+      const originalValue = parseInt(document.getElementById('originalServerUnitId').value);
+
+      // Skip validation if empty
+      if (!input.value) {
+        input.classList.remove('error');
+        errorMsg.classList.remove('show');
+        submitBtn.disabled = false;
+        return true;
+      }
+
+      // Check if ID exists (but allow current ID in edit mode)
+      const isDuplicate = existingServerUnitIds.includes(value) && value !== originalValue;
+
+      if (isDuplicate) {
+        input.classList.add('error');
+        errorMsg.classList.add('show');
+        submitBtn.disabled = true;
+        return false;
+      } else {
+        input.classList.remove('error');
+        errorMsg.classList.remove('show');
+        submitBtn.disabled = false;
+        return true;
+      }
+    }
+
+    function sortTable(columnIndex) {
+      const table = document.getElementById('clientsTable');
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const headers = table.querySelectorAll('th');
+
+      // Toggle sort direction
+      if (currentSortColumn === columnIndex) {
+        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSortDirection = 'asc';
+        currentSortColumn = columnIndex;
+      }
+
+      // Remove sort classes from all headers
+      headers.forEach(header => {
+        header.classList.remove('sort-asc', 'sort-desc');
+      });
+
+      // Add sort class to current header
+      headers[columnIndex].classList.add(currentSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+
+      // Sort rows
+      rows.sort((a, b) => {
+        let aValue = a.cells[columnIndex].textContent.trim();
+        let bValue = b.cells[columnIndex].textContent.trim();
+
+        // Handle "-" as empty value
+        if (aValue === '-') aValue = '';
+        if (bValue === '-') bValue = '';
+
+        // Try to parse as number
+        const aNum = parseFloat(aValue);
+        const bNum = parseFloat(bValue);
+
+        let comparison = 0;
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          // Numeric comparison
+          comparison = aNum - bNum;
+        } else {
+          // String comparison
+          comparison = aValue.localeCompare(bValue, 'da');
+        }
+
+        return currentSortDirection === 'asc' ? comparison : -comparison;
+      });
+
+      // Re-append sorted rows
+      rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function openAddModal() {
+      loadExistingServerUnitIds();
+      isEditMode = false;
+      document.getElementById('modalTitle').textContent = 'Tilføj Ny Klient';
+      document.getElementById('submitBtn').textContent = 'Tilføj Klient';
+      document.getElementById('deviceForm').reset();
+      document.getElementById('reading').value = 'holding';
+      document.getElementById('register_reading').value = 'holding';
+      document.getElementById('import_reading').value = 'holding';
+      document.getElementById('export_reading').value = 'holding';
+      document.getElementById('register_offset').value = '';
+      document.getElementById('import_offset').value = '';
+      document.getElementById('export_offset').value = '';
+      document.getElementById('originalServerUnitId').value = '';
+      document.getElementById('server_unit_id').classList.remove('error');
+      document.getElementById('serverUnitIdError').classList.remove('show');
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('deviceModal').style.display = 'block';
+    }
+
+    function editDevice(button) {
+      loadExistingServerUnitIds();
+      const device = JSON.parse(button.getAttribute('data-device'));
+      isEditMode = true;
+      document.getElementById('modalTitle').textContent = 'Rediger Klient';
+      document.getElementById('submitBtn').textContent = 'Gem Ændringer';
+
+      // Populate form with device data
+      document.getElementById('project_nr').value = device.project_nr || '';
+      document.getElementById('site').value = device.site;
+      document.getElementById('name').value = device.name;
+      document.getElementById('ip').value = device.ip;
+      document.getElementById('port').value = device.port;
+      document.getElementById('reading').value = (device.reading || device.table || 'holding');
+      document.getElementById('unit_id').value = device.unit_id;
+      document.getElementById('server_unit_id').value = device.server_unit_id;
+      document.getElementById('data_collection').value = device.data_collection;
+      document.getElementById('register_address').value = device.registers.active_power.address;
+      document.getElementById('register_reading').value = (device.registers.active_power.reading || device.registers.active_power.table || device.reading || device.table || 'holding');
+      document.getElementById('register_format').value = device.registers.active_power.format;
+      document.getElementById('register_scale').value = device.registers.active_power.scale;
+      document.getElementById('register_offset').value = (device.registers.active_power.offset ?? '');
+
+      // Populate total_import fields if present
+      if (device.registers.total_import) {
+        document.getElementById('import_address').value = device.registers.total_import.address;
+        document.getElementById('import_reading').value = (device.registers.total_import.reading || device.registers.total_import.table || 'holding');
+        document.getElementById('import_format').value = device.registers.total_import.format;
+        document.getElementById('import_scale').value = device.registers.total_import.scale;
+        document.getElementById('import_offset').value = (device.registers.total_import.offset ?? '');
+      } else {
+        document.getElementById('import_address').value = '';
+        document.getElementById('import_reading').value = 'holding';
+        document.getElementById('import_format').value = 'float32_1';
+        document.getElementById('import_scale').value = '1.0';
+        document.getElementById('import_offset').value = '';
+      }
+
+      // Populate total_export fields if present
+      if (device.registers.total_export) {
+        document.getElementById('export_address').value = device.registers.total_export.address;
+        document.getElementById('export_reading').value = (device.registers.total_export.reading || device.registers.total_export.table || 'holding');
+        document.getElementById('export_format').value = device.registers.total_export.format;
+        document.getElementById('export_scale').value = device.registers.total_export.scale;
+        document.getElementById('export_offset').value = (device.registers.total_export.offset ?? '');
+      } else {
+        document.getElementById('export_address').value = '';
+        document.getElementById('export_reading').value = 'holding';
+        document.getElementById('export_format').value = 'float32_1';
+        document.getElementById('export_scale').value = '1.0';
+        document.getElementById('export_offset').value = '';
+      }
+
+      // Store original server_unit_id for update
+      document.getElementById('originalServerUnitId').value = device.server_unit_id;
+
+      // Reset validation
+      document.getElementById('server_unit_id').classList.remove('error');
+      document.getElementById('serverUnitIdError').classList.remove('show');
+      document.getElementById('submitBtn').disabled = false;
+
+      document.getElementById('deviceModal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('deviceModal').style.display = 'none';
+      document.getElementById('deviceForm').reset();
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function (event) {
+      const modal = document.getElementById('deviceModal');
+      if (event.target === modal) {
+        closeModal();
+      }
+    }
+
+    // Handle form submission
+    document.getElementById('deviceForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      // Final validation check
+      if (!validateServerUnitId()) {
+        return;
+      }
+
+      const formData = {
+        site: document.getElementById('site').value,
+        name: document.getElementById('name').value,
+        ip: document.getElementById('ip').value,
+        port: parseInt(document.getElementById('port').value),
+        reading: document.getElementById('reading').value,
+        unit_id: parseInt(document.getElementById('unit_id').value),
+        server_unit_id: parseInt(document.getElementById('server_unit_id').value),
+        data_collection: document.getElementById('data_collection').value,
+        registers: {
+          active_power: {
+            address: parseInt(document.getElementById('register_address').value),
+            reading: document.getElementById('register_reading').value,
+            format: document.getElementById('register_format').value,
+            scale: parseFloat(document.getElementById('register_scale').value)
+          }
+        }
+      };
+
+      const apOffset = document.getElementById('register_offset').value.trim();
+      if (apOffset !== '') {
+        formData.registers.active_power.offset = parseFloat(apOffset);
+      }
+
+      // Add project_nr if provided
+      const project_nr = document.getElementById('project_nr').value.trim();
+      if (project_nr) {
+        formData.project_nr = project_nr;
+      }
+
+      // Add total_import if address is provided
+      const import_address = document.getElementById('import_address').value.trim();
+      if (import_address) {
+        formData.registers.total_import = {
+          address: parseInt(import_address),
+          reading: (document.getElementById('import_reading').value || undefined),
+          format: document.getElementById('import_format').value,
+          scale: parseFloat(document.getElementById('import_scale').value)
+        };
+
+        if (!formData.registers.total_import.reading) {
+          delete formData.registers.total_import.reading;
+        }
+
+        const impOffset = document.getElementById('import_offset').value.trim();
+        if (impOffset !== '') {
+          formData.registers.total_import.offset = parseFloat(impOffset);
+        }
+      }
+
+      // Add total_export if address is provided
+      const export_address = document.getElementById('export_address').value.trim();
+      if (export_address) {
+        formData.registers.total_export = {
+          address: parseInt(export_address),
+          reading: (document.getElementById('export_reading').value || undefined),
+          format: document.getElementById('export_format').value,
+          scale: parseFloat(document.getElementById('export_scale').value)
+        };
+
+        if (!formData.registers.total_export.reading) {
+          delete formData.registers.total_export.reading;
+        }
+
+        const expOffset = document.getElementById('export_offset').value.trim();
+        if (expOffset !== '') {
+          formData.registers.total_export.offset = parseFloat(expOffset);
+        }
+      }
+
+      const url = isEditMode ? '/update_device' : '/add_device';
+
+      if (isEditMode) {
+        formData.original_server_unit_id = parseInt(document.getElementById('originalServerUnitId').value);
+      }
+
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert(isEditMode ? 'Klient opdateret succesfuldt!' : 'Klient tilføjet succesfuldt!');
+            closeModal();
+            window.location.reload();
+          } else {
+            alert('Fejl: ' + (data.error || 'Kunne ikke gemme klient'));
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Der opstod en fejl ved gemning af klient');
+        });
+    });
+
+    function deleteDevice(button) {
+      const serverUnitId = parseInt(button.getAttribute('data-unit-id'));
+      const siteName = button.getAttribute('data-site');
+
+      if (!confirm(`Er du sikker på at du vil slette klienten "${siteName}" (Server Unit ID: ${serverUnitId})?`)) {
+        return;
+      }
+
+      fetch('/delete_device', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ server_unit_id: serverUnitId })
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert('Klient slettet succesfuldt!');
+            window.location.reload();
+          } else {
+            alert('Fejl: ' + (data.error || 'Kunne ikke slette klient'));
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Der opstod en fejl ved sletning af klient');
+        });
+    }
+
+    // ============ MULTI-EM MODAL FUNCTIONS ============
+    let emDeviceCount = 0;
+    let multiEmExistingDevices = [];
+
+    async function fetchMultiEmExistingDevices() {
+      try {
+        const response = await fetch('/get_all_devices');
+        const data = await response.json();
+        if (data.success) {
+          multiEmExistingDevices = data.devices || [];
+        }
+      } catch (error) {
+        console.error('Error fetching devices:', error);
+      }
+    }
+
+    function openMultiEmModal() {
+      document.getElementById('addMultiEmModal').style.display = 'block';
+      fetchMultiEmExistingDevices();
+      if (emDeviceCount === 0) {
+        addEmDevice();
+      }
+    }
+
+    function closeMultiEmModal() {
+      document.getElementById('addMultiEmModal').style.display = 'none';
+      document.getElementById('addMultiEmForm').reset();
+      document.getElementById('emDevicesList').innerHTML = '';
+      emDeviceCount = 0;
+    }
+
+    function addEmDevice() {
+      emDeviceCount++;
+      const deviceHtml = `
+        <div class="em-device" id="emDevice${emDeviceCount}" style="background: #f5f5f5; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; position: relative;">
+          <button type="button" onclick="removeEmDevice(${emDeviceCount})" style="position: absolute; top: 0.5rem; right: 0.5rem; background: #e74c3c; color: white; border: none; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer;">✕</button>
+
+          <h3 style="font-size: 1rem; margin-bottom: 0.8rem;">⚡ EM #${emDeviceCount}</h3>
+
+          <div class="form-group">
+            <label for="em${emDeviceCount}_site">Site Navn *</label>
+            <input type="text" id="em${emDeviceCount}_site" required placeholder="f.eks. Alssund Gymnasium EM1">
+          </div>
+
+          <div class="form-group">
+            <label for="em${emDeviceCount}_name">Device Navn *</label>
+            <input type="text" id="em${emDeviceCount}_name" required placeholder="f.eks. Carlo Gavazzi EM24">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.5rem;">
+            <div class="form-group">
+              <label for="em${emDeviceCount}_ip">IP Adresse *</label>
+              <input type="text" id="em${emDeviceCount}_ip" required placeholder="127.1.5.12">
+            </div>
+            <div class="form-group">
+              <label for="em${emDeviceCount}_port">Port *</label>
+              <input type="number" id="em${emDeviceCount}_port" required value="502">
+            </div>
+            <div class="form-group">
+              <label for="em${emDeviceCount}_unit_id">Unit ID *</label>
+              <input type="number" id="em${emDeviceCount}_unit_id" required value="1">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="em${emDeviceCount}_data_collection">Data Collection *</label>
+            <input type="text" id="em${emDeviceCount}_data_collection" required placeholder="f.eks. alssund_em1_data">
+          </div>
+
+          <div style="background: white; padding: 0.8rem; border-radius: 6px; margin-bottom: 0.5rem;">
+            <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem;">⚡ Active Power Register</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group">
+                <label for="em${emDeviceCount}_ap_addr">Adresse *</label>
+                <input type="number" id="em${emDeviceCount}_ap_addr" required placeholder="40">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_ap_reading">Read Type *</label>
+                <select id="em${emDeviceCount}_ap_reading" required>
+                  <option value="holding" selected>holding</option>
+                  <option value="input">input</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_ap_format">Format *</label>
+                <select id="em${emDeviceCount}_ap_format" required>
+                  <option value="float32_1">float32_1</option>
+                  <option value="float32_2">float32_2</option>
+                  <option value="int16">int16</option>
+                  <option value="int32" selected>int32</option>
+                  <option value="uint32">uint32</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_ap_scale">Scale *</label>
+                <input type="number" id="em${emDeviceCount}_ap_scale" required value="1" step="0.1">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_ap_offset">Offset [W]</label>
+                <input type="number" id="em${emDeviceCount}_ap_offset" placeholder="f.eks. 16000" step="0.01">
+              </div>
+            </div>
+            <small style="color: #666;">Offset lægges til efter (raw * scale). Read Type kan være forskellig pr. register.</small>
+          </div>
+
+          <div style="background: white; padding: 0.8rem; border-radius: 6px; margin-bottom: 0.5rem;">
+            <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem;">⬇️ Total Import (optional)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group">
+                <label for="em${emDeviceCount}_imp_addr">Adresse</label>
+                <input type="number" id="em${emDeviceCount}_imp_addr" placeholder="800">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_imp_reading">Read Type</label>
+                <select id="em${emDeviceCount}_imp_reading">
+                  <option value="">-- Default --</option>
+                  <option value="holding" selected>holding</option>
+                  <option value="input">input</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_imp_format">Format</label>
+                <select id="em${emDeviceCount}_imp_format">
+                  <option value="">-- Vælg --</option>
+                  <option value="float32_1">float32_1</option>
+                  <option value="float32_2">float32_2</option>
+                  <option value="int16">int16</option>
+                  <option value="uint16">uint16</option>
+                  <option value="int32">int32</option>
+                  <option value="int32_1">int32_1</option>
+                  <option value="uint32">uint32</option>
+                  <option value="double">double</option>
+                  <option value="double_little">double_little</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_imp_scale">Scale</label>
+                <input type="number" id="em${emDeviceCount}_imp_scale" value="1" step="0.1">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_imp_offset">Offset [Wh]</label>
+                <input type="number" id="em${emDeviceCount}_imp_offset" placeholder="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div style="background: white; padding: 0.8rem; border-radius: 6px;">
+            <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem;">⬆️ Total Export (optional)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group">
+                <label for="em${emDeviceCount}_exp_addr">Adresse</label>
+                <input type="number" id="em${emDeviceCount}_exp_addr" placeholder="808">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_exp_reading">Read Type</label>
+                <select id="em${emDeviceCount}_exp_reading">
+                  <option value="">-- Default --</option>
+                  <option value="holding" selected>holding</option>
+                  <option value="input">input</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_exp_format">Format</label>
+                <select id="em${emDeviceCount}_exp_format">
+                  <option value="">-- Vælg --</option>
+                  <option value="float32_1">float32_1</option>
+                  <option value="float32_2">float32_2</option>
+                  <option value="int16">int16</option>
+                  <option value="uint16">uint16</option>
+                  <option value="int32">int32</option>
+                  <option value="int32_1">int32_1</option>
+                  <option value="uint32">uint32</option>
+                  <option value="double">double</option>
+                  <option value="double_little">double_little</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_exp_scale">Scale</label>
+                <input type="number" id="em${emDeviceCount}_exp_scale" value="1" step="0.1">
+              </div>
+              <div class="form-group">
+                <label for="em${emDeviceCount}_exp_offset">Offset [Wh]</label>
+                <input type="number" id="em${emDeviceCount}_exp_offset" placeholder="0" step="0.01">
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('emDevicesList').insertAdjacentHTML('beforeend', deviceHtml);
+    }
+
+    function removeEmDevice(deviceId) {
+      const element = document.getElementById(`emDevice${deviceId}`);
+      if (element) {
+        element.remove();
+      }
+    }
+
+    document.getElementById('addMultiEmForm').addEventListener('submit', async function (event) {
+      event.preventDefault();
+
+      const projectNr = parseInt(document.getElementById('multi_project_nr').value);
+      const emGroup = document.getElementById('multi_em_group').value.trim();
+      const serverUnitId = parseInt(document.getElementById('multi_server_unit_id').value);
+      const multiReading = document.getElementById('multi_reading').value;
+
+      // Validate server_unit_id
+      const conflictingDevice = multiEmExistingDevices.find(d =>
+        d.server_unit_id === serverUnitId && d.em_group !== emGroup
+      );
+      if (conflictingDevice) {
+        alert(`❌ Server Unit ID ${serverUnitId} er allerede i brug af "${conflictingDevice.site}"!\nBrug et andet Unit ID eller samme EM Group.`);
+        return;
+      }
+
+      const devices = [];
+
+      for (let i = 1; i <= emDeviceCount; i++) {
+        const siteInput = document.getElementById(`em${i}_site`);
+        if (!siteInput) continue;
+
+        const registers = {
+          active_power: {
+            address: parseInt(document.getElementById(`em${i}_ap_addr`).value),
+            reading: document.getElementById(`em${i}_ap_reading`).value,
+            format: document.getElementById(`em${i}_ap_format`).value,
+            scale: parseFloat(document.getElementById(`em${i}_ap_scale`).value)
+          }
+        };
+
+        const apOffset = document.getElementById(`em${i}_ap_offset`).value.trim();
+        if (apOffset !== '') {
+          registers.active_power.offset = parseFloat(apOffset);
+        }
+
+        const impAddr = document.getElementById(`em${i}_imp_addr`).value;
+        const impFormat = document.getElementById(`em${i}_imp_format`).value;
+        if (impAddr && impFormat) {
+          registers.total_import = {
+            address: parseInt(impAddr),
+            reading: (document.getElementById(`em${i}_imp_reading`).value || undefined),
+            format: impFormat,
+            scale: parseFloat(document.getElementById(`em${i}_imp_scale`).value)
+          };
+
+          if (!registers.total_import.reading) {
+            delete registers.total_import.reading;
+          }
+
+          const impOffset = document.getElementById(`em${i}_imp_offset`).value.trim();
+          if (impOffset !== '') {
+            registers.total_import.offset = parseFloat(impOffset);
+          }
+        }
+
+        const expAddr = document.getElementById(`em${i}_exp_addr`).value;
+        const expFormat = document.getElementById(`em${i}_exp_format`).value;
+        if (expAddr && expFormat) {
+          registers.total_export = {
+            address: parseInt(expAddr),
+            reading: (document.getElementById(`em${i}_exp_reading`).value || undefined),
+            format: expFormat,
+            scale: parseFloat(document.getElementById(`em${i}_exp_scale`).value)
+          };
+
+          if (!registers.total_export.reading) {
+            delete registers.total_export.reading;
+          }
+
+          const expOffset = document.getElementById(`em${i}_exp_offset`).value.trim();
+          if (expOffset !== '') {
+            registers.total_export.offset = parseFloat(expOffset);
+          }
+        }
+
+        const deviceData = {
+          site: siteInput.value,
+          name: document.getElementById(`em${i}_name`).value,
+          ip: document.getElementById(`em${i}_ip`).value,
+          port: parseInt(document.getElementById(`em${i}_port`).value),
+          reading: multiReading,
+          unit_id: parseInt(document.getElementById(`em${i}_unit_id`).value),
+          server_unit_id: serverUnitId,
+          project_nr: projectNr,
+          em_group: emGroup,
+          data_collection: document.getElementById(`em${i}_data_collection`).value,
+          registers: registers
+        };
+
+        devices.push(deviceData);
+      }
+
+      if (devices.length === 0) {
+        alert('Tilføj mindst én EM device!');
+        return;
+      }
+
+      let successCount = 0;
+      let errorMessages = [];
+
+      for (const device of devices) {
+        try {
+          const response = await fetch('/add_device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(device)
+          });
+          const data = await response.json();
+
+          if (data.success) {
+            successCount++;
+          } else {
+            errorMessages.push(`${device.site}: ${data.error}`);
+          }
+        } catch (error) {
+          errorMessages.push(`${device.site}: ${error.message}`);
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`✅ ${successCount} af ${devices.length} EM'er tilføjet succesfuldt!`);
+        closeMultiEmModal();
+        window.location.reload();
+      } else {
+        alert('❌ Fejl:\n' + errorMessages.join('\n'));
+      }
+    });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="da">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Health - Modbus Server</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c3e50, #bdc3c7);
+      color: #333;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #ecf0f1;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #2c3e50;
+    }
+
+    .btn-back {
+      padding: 0.6rem 1.2rem;
+      background: #95a5a6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.3s ease;
+    }
+
+    .btn-back:hover {
+      background: #7f8c8d;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .status-card {
+      background: #f9f9f9;
+      padding: 1.5rem;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .status-card h3 {
+      font-size: 0.9rem;
+      color: #7f8c8d;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .status-card .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #2c3e50;
+    }
+
+    .status-card .value.ok {
+      color: #27ae60;
+    }
+
+    .status-card .value.error {
+      color: #e74c3c;
+    }
+
+    .status-card .value.warning {
+      color: #f39c12;
+    }
+
+    .errors-section {
+      margin-top: 2rem;
+    }
+
+    .errors-section h2 {
+      font-size: 1.3rem;
+      color: #2c3e50;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .errors-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .errors-table th,
+    .errors-table td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .errors-table th {
+      background: #34495e;
+      color: #fff;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+
+    .errors-table tr:hover {
+      background: #f9f9f9;
+    }
+
+    .severity-error {
+      color: #e74c3c;
+      font-weight: 600;
+    }
+
+    .severity-warning {
+      color: #f39c12;
+      font-weight: 600;
+    }
+
+    .no-errors {
+      text-align: center;
+      padding: 2rem;
+      color: #27ae60;
+      font-size: 1.1rem;
+    }
+
+    .category-badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .category-connect {
+      background: #e74c3c;
+      color: white;
+    }
+
+    .category-modbus {
+      background: #9b59b6;
+      color: white;
+    }
+
+    .category-db {
+      background: #3498db;
+      color: white;
+    }
+
+    .category-data {
+      background: #f39c12;
+      color: white;
+    }
+
+    .category-runtime {
+      background: #95a5a6;
+      color: white;
+    }
+
+    .refresh-info {
+      text-align: center;
+      color: #7f8c8d;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .message-cell {
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .message-cell:hover {
+      white-space: normal;
+      word-break: break-word;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>🏥 System Health</h1>
+      <a href="{{ url_for('index') }}" class="btn-back">← Tilbage til Dashboard</a>
+    </header>
+
+    <div class="status-grid">
+      <div class="status-card">
+        <h3>MongoDB</h3>
+        <div class="value {{ 'ok' if mongo_status == 'OK' else 'error' }}">
+          {{ mongo_status }}
+        </div>
+      </div>
+
+      <div class="status-card">
+        <h3>Modbus Server</h3>
+        <div class="value {{ 'ok' if modbus_status == 'Kører' else 'warning' }}">
+          {{ modbus_status }}
+        </div>
+      </div>
+
+      <div class="status-card">
+        <h3>Devices</h3>
+        <div class="value">{{ device_count }}</div>
+      </div>
+
+      <div class="status-card">
+        <h3>Tilsluttede Klienter</h3>
+        <div class="value">{{ connected_clients }}</div>
+      </div>
+    </div>
+
+    <div class="errors-section">
+      <h2>⚠️ Seneste Fejl & Advarsler</h2>
+
+      {% if recent_errors|length > 0 %}
+      <table class="errors-table">
+        <thead>
+          <tr>
+            <th>Tidspunkt</th>
+            <th>Site</th>
+            <th>Kategori</th>
+            <th>Alvorlighed</th>
+            <th>Besked</th>
+            <th>Antal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for err in recent_errors %}
+          <tr>
+            <td>{{ err.last_seen if err.last_seen else '-' }}</td>
+            <td>{{ err.site }}</td>
+            <td>
+              <span class="category-badge category-{{ err.category }}">{{ err.category }}</span>
+            </td>
+            <td class="severity-{{ err.severity }}">{{ err.severity }}</td>
+            <td class="message-cell" title="{{ err.message }}">{{ err.message }}</td>
+            <td>{{ err.count if err.count else 1 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="no-errors">
+        ✅ Ingen fejl registreret – systemet kører fint!
+      </div>
+      {% endif %}
+    </div>
+
+    <p class="refresh-info">
+      Siden opdateres ikke automatisk. <a href="{{ url_for('health') }}">🔄 Opdater nu</a>
+    </p>
+  </div>
+</body>
+
+</html>

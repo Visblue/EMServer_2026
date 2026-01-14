@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="da">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modbus Server Overvågning</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Reset and basic styling */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c3e50, #bdc3c7);
+      color: #333;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 2200px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      animation: fadeIn 1s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      color: #2c3e50;
+    }
+
+    .logout-btn {
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      background: #e74c3c;
+      color: #fff;
+      border-radius: 6px;
+      transition: background 0.3s ease;
+    }
+
+    .logout-btn:hover {
+      background: #c0392b;
+    }
+
+    .add-client-btn {
+      padding: 0.5rem 1rem;
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+      font-weight: 600;
+    }
+
+    .add-client-btn:hover {
+      background: #2980b9;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+
+    .card {
+      background: #f9f9f9;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .card-header h2 {
+      font-size: 1.4rem;
+      color: #2c3e50;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e74c3c;
+    }
+
+    .status-dot.running {
+      background: #27ae60;
+    }
+
+    .status-text {
+      font-weight: 600;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #34495e;
+    }
+
+    .card-controls {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .card-controls form {
+      flex: 1;
+    }
+
+    .card-controls button {
+      width: 100%;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .start-btn {
+      background: #27ae60;
+      color: #fff;
+    }
+
+    .start-btn:hover:enabled {
+      background: #1e8449;
+    }
+
+    .stop-btn {
+      background: #e74c3c;
+      color: #fff;
+    }
+
+    .stop-btn:hover:enabled {
+      background: #c0392b;
+    }
+
+    .clients-list,
+    .slaves-table {
+      margin-top: 1rem;
+    }
+
+    .client-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .client-item:last-child {
+      border-bottom: none;
+    }
+
+    .clients-card h2,
+    .slaves-card h2 {
+      margin-bottom: 1rem;
+      color: #2c3e50;
+    }
+
+    .slaves-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .slaves-table th,
+    .slaves-table td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .slaves-table th {
+      background: #ecf0f1;
+    }
+
+    .no-clients {
+      text-align: center;
+      color: #777;
+      padding: 1rem 0;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+      background-color: #fff;
+      margin: 5% auto;
+      padding: 2rem;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-header h2 {
+      color: #2c3e50;
+      font-size: 1.5rem;
+    }
+
+    .close-modal {
+      color: #aaa;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      background: none;
+    }
+
+    .close-modal:hover {
+      color: #000;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #34495e;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .form-actions button {
+      flex: 1;
+      padding: 0.7rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .btn-submit {
+      background: #27ae60;
+      color: #fff;
+    }
+
+    .btn-submit:hover {
+      background: #1e8449;
+    }
+
+    .btn-cancel {
+      background: #95a5a6;
+      color: #fff;
+    }
+
+    .btn-cancel:hover {
+      background: #7f8c8d;
+    }
+
+    .register-group {
+      border: 1px solid #ddd;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      background: #f9f9f9;
+    }
+
+    .register-group h3 {
+      margin-bottom: 1rem;
+      color: #2c3e50;
+      font-size: 1.1rem;
+    }
+
+    /* Row color coding based on device type */
+    .slaves-table tbody tr.pv-row {
+      background-color: #ffe6cc;
+    }
+
+    .slaves-table tbody tr.pv-row:hover {
+      background-color: #ffd9b3;
+    }
+
+    .slaves-table tbody tr.building-row {
+      background-color: #cce5ff;
+    }
+
+    .slaves-table tbody tr.building-row:hover {
+      background-color: #b3d9ff;
+    }
+
+    .slaves-table tbody tr.heat-row {
+      background-color: #ffcccc;
+    }
+
+    .slaves-table tbody tr.heat-row:hover {
+      background-color: #ffb3b3;
+    }
+
+    .slaves-table tbody tr.charger-row {
+      background-color: #ccffcc;
+    }
+
+    .slaves-table tbody tr.charger-row:hover {
+      background-color: #b3ffb3;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Visblue Modbus Server </h1>
+      <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('health') }}" class="add-client-btn" style="text-decoration: none; background: #27ae60;">🏥 Health</a>
+        <a href="{{ url_for('clients') }}" class="add-client-btn" style="text-decoration: none;">📋 Administrer
+          Klienter</a>
+      </div>
+    </header>
+    <main>
+      <!-- Server Status -->
+      <section class="card status-card">
+        <div class="card-header">
+          <h2>Server Status</h2>
+          <span class="status-dot {{ 'running' if server_status else '' }}"></span>
+        </div>
+        <p class="status-text">{{ 'Kører' if server_status else 'Stoppet' }}</p>
+        <div class="card-controls">
+          <!-- Start Server Form -->
+          <form id="startServerForm" method="post" action="{{ url_for('start_server_route') }}">
+            <input type="hidden" name="password" id="startPassword">
+            <button type="submit" class="btn start-btn" {{ 'disabled' if server_status }}>Start</button>
+          </form>
+
+          <!-- Stop Server Form -->
+          <form id="stopServerForm" method="post" action="{{ url_for('stop_server_route') }}">
+            <input type="hidden" name="password" id="stopPassword">
+            <button type="submit" class="btn stop-btn" {{ 'disabled' if not server_status }}>Stop</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Connected Clients Card -->
+      <section class="card clients-card">
+        <h2>Tilsluttede Klienter</h2>
+        <div class="clients-list" id="clients-list">
+          {% if clients|length > 0 %}
+          {% for ip, timestamp in clients.items() %}
+          <div class="client-item">
+            <span class="client-ip">{{ ip }}</span>
+            <span class="client-time">{{ timestamp }}</span>
+          </div>
+          {% endfor %}
+          {% else %}
+          <p class="no-clients">Ingen klienter forbundet</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <!-- Slave Values Card -->
+      <section class="card slaves-card">
+        <h2 style="text-Align: center;">Slaveværdier<h2>
+            <h4>Holding Register adresse:
+              <ui> Active Power: 19026</ui>
+              , DMD: 19068, SUP: 19076
+            </h4>
+            <table class="slaves-table">
+              <thead>
+                <tr>
+                  <th>Slave ID</th>
+                  <th>Site</th>
+                  <th>Device</th>
+                  <th>Active Power [W]</th>
+                  <th>DMD [wH]</th>
+                  <th>SUP [wH]</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for slave_id, values in slave_values.items() %}
+                {% set device_name = sites.get(slave_id, {}).get('name', '').upper() %}
+                <tr
+                  class="{% if 'PV' in device_name %}pv-row{% elif 'BUILDING' in device_name %}building-row{% elif 'HEAT' in device_name %}heat-row{% elif 'CHARGER' in device_name or 'CHARGE' in device_name %}charger-row{% endif %}">
+                  <td>{{ slave_id }}</td>
+                  <td>{{ sites.get(slave_id, {}).get('site', 'Not used') }}</td>
+                  <td>{{ sites.get(slave_id, {}).get('name', '-') }}</td>
+                  {% for value in values %}
+                  <td>{{ value }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+      </section>
+    </main>
+  </div>
+
+  <!-- Refresh Script -->
+  <script>
+    // Auto-refresh and password handling
+
+
+    document.getElementById('startServerForm').addEventListener('submit', function (event) {
+      let pass = prompt("Indtast adgangskode for at starte serveren:");
+      if (!pass) {
+        event.preventDefault(); // Stop form submission if no password
+        alert("Adgangskode kræves!");
+        return;
+      }
+      document.getElementById('startPassword').value = pass;
+    });
+
+    document.getElementById('stopServerForm').addEventListener('submit', function (event) {
+      let pass = prompt("Indtast adgangskode for at stoppe serveren:");
+      if (!pass) {
+        event.preventDefault();
+        alert("Adgangskode kræves!");
+        return;
+      }
+      document.getElementById('stopPassword').value = pass;
+    });
+    function refreshPage() {
+      fetch(window.location.href)
+        .then(response => response.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+
+          // Update the client list
+          document.getElementById('clients-list').innerHTML = doc.getElementById('clients-list').innerHTML;
+
+          // Update the server status dot and text
+          document.querySelector('.status-dot').className = doc.querySelector('.status-dot').className;
+          document.querySelector('.status-text').textContent = doc.querySelector('.status-text').textContent;
+
+          // Update the button states correctly
+          document.querySelector('.start-btn').disabled = doc.querySelector('.start-btn').hasAttribute('disabled');
+          document.querySelector('.stop-btn').disabled = doc.querySelector('.stop-btn').hasAttribute('disabled');
+
+          // Update the slave values table
+          document.querySelector('.slaves-table tbody').innerHTML = doc.querySelector('.slaves-table tbody').innerHTML;
+        })
+        .catch(error => console.error('Fejl ved opdatering:', error));
+    }
+
+
+
+    // Refresh every 2 seconds
+    setInterval(refreshPage, 2000);
+    refreshPage();
+
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,49 @@
+{
+    "devices": [
+        {
+            "project_nr": "10690",
+            "name": "Konvalvej PV",
+            "device_name": "PV_1",
+            "device_ip": "10.83.19.146",
+            "device_port": 502,
+            "unit_id": 1,
+            "device_dataformat": "int16",
+            "import_register": "false",
+            "export_register": "false",
+            "group": "false",
+            "collection_name": "10690_PV_1",
+            "register": [
+                {
+                    "name": "ActivePower",
+                    "reading": "input register",
+                    "address": 3,
+                    "format": "int16",
+                    "count": 1,
+                    "scale": 0.1
+                },
+                {
+                    "name": "Import register",
+                    "reading": "input register",
+                    "address": 4,
+                    "format": "int16",
+                    "count": 1,
+                    "scale": 0.1
+                },
+                {
+                    "name": "Export register",
+                    "reading": "input register",
+                    "address": 5,
+                    "format": "int16",
+                    "count": 1,
+                    "scale": 0.1
+                }
+            ]
+        },
+        {
+            "project_nr": "10690",
+            "name": "Konvalvej EV Charger",
+            "device_name": "EV_1",
+            "device_ip": ""
+        }
+    ]
+}
