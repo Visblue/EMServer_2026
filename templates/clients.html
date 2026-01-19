@@ -444,7 +444,7 @@
                   </strong>
                 {% else %}
                   <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
-                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, '')"
+                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ ''|tojson }})"
                           title="Klik for at tilføje">
                     ⚠️ Mangler! Klik for at tilføje
                   </strong>
@@ -1620,7 +1620,13 @@
     // Inline edit Group Data Collection directly in the table
     function editGroupCollectionInline(element, serverUnitId, emGroup, currentValue) {
       const container = element.closest('td');
-      const currentText = currentValue || '';
+      // Handle both string and JSON-parsed values
+      let currentText = '';
+      if (typeof currentValue === 'string') {
+        currentText = currentValue;
+      } else if (currentValue !== null && currentValue !== undefined) {
+        currentText = String(currentValue);
+      }
       
       // Create input field
       const input = document.createElement('input');
@@ -1657,13 +1663,15 @@
       // Save function
       const save = () => {
         const newValue = input.value.trim();
-        if (confirm(`Opdater Group Data Collection til "${newValue || 'auto-genereret'}" for alle enheder i gruppen "${emGroup}"?`)) {
+        // Ensure emGroup is a string
+        const emGroupStr = typeof emGroup === 'string' ? emGroup : String(emGroup || '');
+        if (confirm(`Opdater Group Data Collection til "${newValue || 'auto-genereret'}" for alle enheder i gruppen "${emGroupStr}"?`)) {
           fetch('/update_group_collection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               server_unit_id: parseInt(serverUnitId),
-              em_group: emGroup,
+              em_group: emGroupStr,
               group_data_collection: newValue
             })
           })
@@ -1688,12 +1696,15 @@
               const displayDiv = document.createElement('div');
               displayDiv.id = `group_collection_${serverUnitId}`;
               if (newValue) {
+                // Escape single quotes and special characters for onclick
+                const escapedValue = newValue.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const escapedEmGroup = emGroup.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 displayDiv.innerHTML = `<strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
-                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '${newValue.replace(/'/g, "\\'")}')"
-                  title="Klik for at redigere">📊 ${newValue}</strong>`;
+                  onclick="editGroupCollectionInline(this, ${serverUnitId}, ${JSON.stringify(emGroup)}, ${JSON.stringify(newValue)})"
+                  title="Klik for at redigere">📊 ${newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong>`;
               } else {
                 displayDiv.innerHTML = `<strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
-                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '')"
+                  onclick="editGroupCollectionInline(this, ${serverUnitId}, ${JSON.stringify(emGroup)}, '')"
                   title="Klik for at tilføje">⚠️ Mangler! Klik for at tilføje</strong>`;
               }
               container.innerHTML = '';
