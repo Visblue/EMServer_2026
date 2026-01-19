@@ -695,7 +695,8 @@ class MongoEnergyRepository:
             return str(data_coll).strip()
         
         # Fallback: generate from project_nr and name
-        project = device_cfg.get("project_nr", "").strip()
+        project_nr_raw = device_cfg.get("project_nr")
+        project = str(project_nr_raw).strip() if project_nr_raw is not None else ""
         name = device_cfg.get("name", "device").strip()
         # Clean name: remove special characters, keep only alphanumeric and underscore
         name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in name.replace(" ", "_"))
@@ -1488,7 +1489,8 @@ class StateFactory:
                 group_collection_name = str(gdc).strip()
             else:
                 # Auto-generate collection name as project_nr_Device_Navn
-                project_nr = first.get("project_nr", "").strip()
+                project_nr_raw = first.get("project_nr")
+                project_nr = str(project_nr_raw).strip() if project_nr_raw is not None else ""
                 device_name = group_name.replace(" ", "_") if group_name else "unknown_group"
                 # Clean device name: remove special characters, keep only alphanumeric and underscore
                 device_name = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name)
