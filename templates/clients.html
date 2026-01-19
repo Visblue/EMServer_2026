@@ -434,17 +434,17 @@
             </td>
             <td colspan="3" style="text-align: center; color: #666;">Klik ▼ for at se enheder</td>
             <td>{{ device.server_unit_id }}</td>
-            <td onclick="event.stopPropagation();" style="position: relative;">
-              <div id="group_collection_{{ device.server_unit_id }}" style="display: inline-block;">
+            <td style="position: relative;" onclick="event.stopPropagation();">
+              <div id="group_collection_{{ device.server_unit_id }}" style="display: inline-block; width: 100%;">
                 {% if device.group_data_collection %}
-                  <strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
-                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ device.group_data_collection|tojson }})"
+                  <strong style="color: #27ae60; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
+                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ device.group_data_collection|tojson }}, event); return false;"
                           title="Klik for at redigere">
                     📊 {{ device.group_data_collection }}
                   </strong>
                 {% else %}
-                  <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
-                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ ''|tojson }})"
+                  <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
+                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ ''|tojson }}, event); return false;"
                           title="Klik for at tilføje">
                     ⚠️ Mangler! Klik for at tilføje
                   </strong>
@@ -1618,8 +1618,22 @@
     }
 
     // Inline edit Group Data Collection directly in the table
-    function editGroupCollectionInline(element, serverUnitId, emGroup, currentValue) {
+    function editGroupCollectionInline(element, serverUnitId, emGroup, currentValue, event) {
+      console.log('editGroupCollectionInline called', { element, serverUnitId, emGroup, currentValue });
+      
+      // Stop event propagation if event is provided
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+      
       const container = element.closest('td');
+      if (!container) {
+        console.error('Could not find container td');
+        alert('Fejl: Kunne ikke finde container');
+        return;
+      }
+      
       // Handle both string and JSON-parsed values
       let currentText = '';
       if (typeof currentValue === 'string') {
@@ -1627,6 +1641,8 @@
       } else if (currentValue !== null && currentValue !== undefined) {
         currentText = String(currentValue);
       }
+      
+      console.log('Current text:', currentText);
       
       // Create input field
       const input = document.createElement('input');
@@ -1775,6 +1791,10 @@
         });
       }
     }
+    
+    // Make function globally available and add debug
+    window.editGroupCollectionInline = editGroupCollectionInline;
+    console.log('editGroupCollectionInline function defined:', typeof editGroupCollectionInline);
   </script>
 </body>
 
