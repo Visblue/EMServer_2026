@@ -1682,11 +1682,12 @@
       input.focus();
       input.select();
       
+      // Ensure emGroup is a string (defined in outer scope for use in save function)
+      const emGroupStr = typeof emGroup === 'string' ? emGroup : String(emGroup || '');
+      
       // Save function
       const save = () => {
         const newValue = input.value.trim();
-        // Ensure emGroup is a string
-        const emGroupStr = typeof emGroup === 'string' ? emGroup : String(emGroup || '');
         if (confirm(`Opdater Group Data Collection til "${newValue || 'auto-genereret'}" for alle enheder i gruppen "${emGroupStr}"?`)) {
           fetch('/update_group_collection', {
             method: 'POST',
