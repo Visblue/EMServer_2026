@@ -734,7 +734,7 @@ class MongoEnergyRepository:
                     meta: EnergyMeta) -> tuple[float, float]:
         """Persist a sample and return updated (last_import, last_export)."""
 
-        site = device_cfg.get("site", "unknown")
+        site = device_cfg.get("site") or "unknown"
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Guard against NaNs.
@@ -745,30 +745,40 @@ class MongoEnergyRepository:
         if total_export != total_export:
             total_export = last_export
 
+        # Ensure totals are not None
+        if total_import is None:
+            total_import = last_import
+        if total_export is None:
+            total_export = last_export
+
         imp_diff = max(0, total_import - last_import) if total_import is not None else 0
         exp_diff = max(0, total_export - last_export) if total_export is not None else 0
 
+        # Ensure all values are not None before saving
+        project_nr = device_cfg.get("project_nr") or ""
+        device_name = device_cfg.get("name") or ""
+
         doc = {
             "Site": site,
-            "Project_nr": device_cfg.get("project_nr", ""),
-            "Device_name": device_cfg.get("name", ""),
+            "Project_nr": project_nr,
+            "Device_name": device_name,
             "Time": now,
             "Active_power": round(active_power, 2),
             "Imported_Wh": imp_diff,
             "Exported_Wh": exp_diff,
             "Total_Imported": total_import,
             "Total_Exported": total_export,
-            "Total_Imported_kWh": total_import / 1000,
-            "Total_Exported_kWh": total_export / 1000,
+            "Total_Imported_kWh": total_import / 1000 if total_import is not None else 0.0,
+            "Total_Exported_kWh": total_export / 1000 if total_export is not None else 0.0,
             "Active_power_valid": not meta.active_power_invalid,
-            "Active_power_raw": meta.active_power_raw,
-            "Active_power_invalid_reason": meta.active_power_reason,
+            "Active_power_raw": meta.active_power_raw if meta.active_power_raw is not None else 0.0,
+            "Active_power_invalid_reason": meta.active_power_reason or "",
             "Import_valid": not meta.import_invalid,
-            "Import_raw": meta.import_raw,
-            "Import_invalid_reason": meta.import_reason,
+            "Import_raw": meta.import_raw if meta.import_raw is not None else 0.0,
+            "Import_invalid_reason": meta.import_reason or "",
             "Export_valid": not meta.export_invalid,
-            "Export_raw": meta.export_raw,
-            "Export_invalid_reason": meta.export_reason,
+            "Export_raw": meta.export_raw if meta.export_raw is not None else 0.0,
+            "Export_invalid_reason": meta.export_reason or "",
             "Has_invalid_data": meta.has_invalid_data,
         }
 
@@ -836,6 +846,7 @@ class EmGroupState:
     members: list[EmMemberState]
     server_cfg: dict[str, Any]
     collection: Collection
+    collection_name: str  # Store collection name for reference
 
     last_import: float
     last_export: float
@@ -1194,14 +1205,21 @@ class EmGroupPoller:
                 reasons_ap.append(f"{em_site}: {meta.active_power_reason}")
             group_meta.active_power_raw = float(group_meta.active_power_raw or 0.0) + float(meta.active_power_raw or ap)
 
+            # For import/export, we use raw values for summing and validate at group level
+            # Only propagate member-level errors if they're critical (NaN, negative, etc.)
+            # Spike/drop validation happens at group level on the summed total
             if meta.import_invalid:
-                group_meta.import_invalid = True
-                reasons_imp.append(f"{em_site}: {meta.import_reason}")
+                # Only propagate if it's a critical error (not just a spike/drop)
+                if "negativ" in meta.import_reason.lower() or "nan" in meta.import_reason.lower():
+                    group_meta.import_invalid = True
+                    reasons_imp.append(f"{em_site}: {meta.import_reason}")
             group_meta.import_raw = float(group_meta.import_raw or 0.0) + float(meta.import_raw or imp)
 
             if meta.export_invalid:
-                group_meta.export_invalid = True
-                reasons_exp.append(f"{em_site}: {meta.export_reason}")
+                # Only propagate if it's a critical error (not just a spike/drop)
+                if "negativ" in meta.export_reason.lower() or "nan" in meta.export_reason.lower():
+                    group_meta.export_invalid = True
+                    reasons_exp.append(f"{em_site}: {meta.export_reason}")
             group_meta.export_raw = float(group_meta.export_raw or 0.0) + float(meta.export_raw or exp)
 
         if success_count == 0:
@@ -1219,7 +1237,13 @@ class EmGroupPoller:
         # Validate the summed totals (not individual member values)
         # This ensures we only save valid summed values to the database
         # Track if this is the first successful read for the group
-        first_read_for_group = (state.last_import == 0.0 and state.last_export == 0.0 and state.run_count == 0)
+        # Consider it first read if: no previous run, or no historical data, or very long time since last run (>1 hour)
+        time_since_last_run = (now - state.last_run_at) if state.last_run_at > 0 else float('inf')
+        first_read_for_group = (
+            state.run_count == 0 or 
+            (state.last_import == 0.0 and state.last_export == 0.0) or
+            time_since_last_run > 3600.0  # More than 1 hour since last run
+        )
         
         # Validate total_import sum with EM group tolerance (higher threshold since we sum multiple meters)
         if total_imp_sum >= 0:  # Allow 0 values
@@ -1273,10 +1297,15 @@ class EmGroupPoller:
 
         # Persist to DB periodically.
         if now - state.last_db_save >= DB_SAVE_INTERVAL_SECONDS:
+            # Ensure project_nr is not None
+            project_nr = ""
+            if state.members:
+                project_nr = state.members[0].cfg.get("project_nr") or ""
             group_device_cfg = {
-                "site": state.group_name,
-                "project_nr": state.members[0].cfg.get("project_nr", "") if state.members else "",
-                "name": state.group_name,
+                "site": state.group_name or "",
+                "project_nr": project_nr,
+                "name": state.group_name or "",
+                "data_collection": state.collection_name,  # Include collection name for reference
             }
             state.last_import, state.last_export = self._repo.save_sample(
                 group_device_cfg,
@@ -1447,11 +1476,18 @@ class StateFactory:
             # Use group_data_collection if available, otherwise fall back to em_group name.
             # Individual EM devices in a group do NOT need their own data_collection.
             first = group_devices[0]
-            group_collection_name = (
-                first.get("group_data_collection")
-                or first.get("data_collection")  # Backward compatibility
-                or group_name  # Ultimate fallback: use group name as collection
-            )
+            # Get group_data_collection, ensuring it's not None, empty, or "undefined"
+            gdc = first.get("group_data_collection")
+            if gdc and str(gdc).strip() and str(gdc).strip().lower() != "undefined":
+                group_collection_name = str(gdc).strip()
+            else:
+                # Fallback to data_collection or group_name
+                dc = first.get("data_collection")
+                if dc and str(dc).strip() and str(dc).strip().lower() != "undefined":
+                    group_collection_name = str(dc).strip()
+                else:
+                    # Ultimate fallback: use group name as collection
+                    group_collection_name = group_name.replace(" ", "_") if group_name else "unknown_group"
             group_device_cfg = {
                 "site": group_name,
                 "project_nr": first.get("project_nr", ""),
@@ -1470,6 +1506,7 @@ class StateFactory:
                         members=members,
                         server_cfg=srv,
                         collection=coll,
+                        collection_name=group_collection_name,
                         last_import=last_imp,
                         last_export=last_exp,
                         site=f"EM_GROUP:{group_name}",
