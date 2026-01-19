@@ -438,13 +438,13 @@
               <div id="group_collection_{{ device.server_unit_id }}" style="display: inline-block;">
                 {% if device.group_data_collection %}
                   <strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
-                          onclick="editGroupCollectionInline(this, '{{ device.server_unit_id }}', '{{ device.em_group }}', '{{ device.group_data_collection }}')"
+                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ device.group_data_collection|tojson }})"
                           title="Klik for at redigere">
                     📊 {{ device.group_data_collection }}
                   </strong>
                 {% else %}
                   <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
-                          onclick="editGroupCollectionInline(this, '{{ device.server_unit_id }}', '{{ device.em_group }}', '')"
+                          onclick="editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, '')"
                           title="Klik for at tilføje">
                     ⚠️ Mangler! Klik for at tilføje
                   </strong>
@@ -1667,7 +1667,21 @@
               group_data_collection: newValue
             })
           })
-          .then(response => response.json())
+          .then(response => {
+            // Check if response is ok and content-type is JSON
+            if (!response.ok) {
+              return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+              });
+            }
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+              return response.text().then(text => {
+                throw new Error('Server returnerede ikke JSON. Svar: ' + text.substring(0, 200));
+              });
+            }
+            return response.json();
+          })
           .then(data => {
             if (data.success) {
               // Update display
@@ -1675,7 +1689,7 @@
               displayDiv.id = `group_collection_${serverUnitId}`;
               if (newValue) {
                 displayDiv.innerHTML = `<strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
-                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '${newValue}')"
+                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '${newValue.replace(/'/g, "\\'")}')"
                   title="Klik for at redigere">📊 ${newValue}</strong>`;
               } else {
                 displayDiv.innerHTML = `<strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
@@ -1685,11 +1699,12 @@
               container.innerHTML = '';
               container.appendChild(displayDiv);
             } else {
-              alert('❌ Fejl: ' + data.error);
+              alert('❌ Fejl: ' + (data.error || 'Ukendt fejl'));
               container.innerHTML = originalHtml;
             }
           })
           .catch(error => {
+            console.error('Error updating group collection:', error);
             alert('❌ Fejl: ' + error.message);
             container.innerHTML = originalHtml;
           });

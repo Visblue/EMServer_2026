@@ -676,12 +676,21 @@ def update_group_collection():
     """Update group_data_collection for all members in an EM group"""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON data received'}), 400
+        
         server_unit_id = data.get('server_unit_id')
         em_group = data.get('em_group')
         new_collection = data.get('group_data_collection', '').strip()
         
         if not server_unit_id or not em_group:
             return jsonify({'success': False, 'error': 'Missing server_unit_id or em_group'}), 400
+        
+        # Ensure server_unit_id is an integer
+        try:
+            server_unit_id = int(server_unit_id)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid server_unit_id format'}), 400
         
         # Connect to MongoDB
         db = mongo_client[MONGO_DB]
