@@ -438,13 +438,19 @@
               <div id="group_collection_{{ device.server_unit_id }}" style="display: inline-block; width: 100%;">
                 {% if device.group_data_collection %}
                   <strong style="color: #27ae60; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
-                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ device.group_data_collection|tojson }}, event); return false;"
+                          data-server-unit-id="{{ device.server_unit_id }}"
+                          data-em-group="{{ device.em_group }}"
+                          data-collection="{{ device.group_data_collection }}"
+                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInlineClick(this); return false;"
                           title="Klik for at redigere">
                     📊 {{ device.group_data_collection }}
                   </strong>
                 {% else %}
                   <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
-                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, {{ device.server_unit_id }}, {{ device.em_group|tojson }}, {{ ''|tojson }}, event); return false;"
+                          data-server-unit-id="{{ device.server_unit_id }}"
+                          data-em-group="{{ device.em_group }}"
+                          data-collection=""
+                          onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInlineClick(this); return false;"
                           title="Klik for at tilføje">
                     ⚠️ Mangler! Klik for at tilføje
                   </strong>
@@ -1712,13 +1718,21 @@
               const displayDiv = document.createElement('div');
               displayDiv.id = `group_collection_${serverUnitId}`;
               if (newValue) {
-                const escapedValue = newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedValue = newValue.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                const escapedEmGroup = emGroupStr.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 displayDiv.innerHTML = `<strong style="color: #27ae60; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
-                  onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, ${serverUnitId}, ${JSON.stringify(emGroup)}, ${JSON.stringify(newValue)}, event); return false;"
+                  data-server-unit-id="${serverUnitId}"
+                  data-em-group="${escapedEmGroup}"
+                  data-collection="${escapedValue}"
+                  onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInlineClick(this); return false;"
                   title="Klik for at redigere">📊 ${escapedValue}</strong>`;
               } else {
+                const escapedEmGroup = emGroupStr.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 displayDiv.innerHTML = `<strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer; display: inline-block; padding: 0.3rem;" 
-                  onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInline(this, ${serverUnitId}, ${JSON.stringify(emGroup)}, '', event); return false;"
+                  data-server-unit-id="${serverUnitId}"
+                  data-em-group="${escapedEmGroup}"
+                  data-collection=""
+                  onclick="event.stopPropagation(); event.preventDefault(); editGroupCollectionInlineClick(this); return false;"
                   title="Klik for at tilføje">⚠️ Mangler! Klik for at tilføje</strong>`;
               }
               container.innerHTML = '';
@@ -1790,8 +1804,17 @@
       }
     }
     
+    // Wrapper function to handle click events with data attributes
+    function editGroupCollectionInlineClick(element) {
+      const serverUnitId = parseInt(element.getAttribute('data-server-unit-id'));
+      const emGroup = element.getAttribute('data-em-group') || '';
+      const currentValue = element.getAttribute('data-collection') || '';
+      editGroupCollectionInline(element, serverUnitId, emGroup, currentValue);
+    }
+    
     // Make function globally available and add debug
     window.editGroupCollectionInline = editGroupCollectionInline;
+    window.editGroupCollectionInlineClick = editGroupCollectionInlineClick;
     console.log('editGroupCollectionInline function defined:', typeof editGroupCollectionInline);
   </script>
 </body>
