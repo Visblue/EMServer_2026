@@ -178,13 +178,21 @@
     }
 
     .clients-table tr.em-group-header {
-      cursor: pointer;
+      cursor: default;
       background-color: #ffe0b2;
       font-weight: 600;
     }
 
     .clients-table tr.em-group-header:hover {
       background-color: #ffcc80;
+    }
+
+    .clients-table tr.em-group-header td:nth-child(8) {
+      background-color: #fff3e0;
+      font-weight: 700;
+      padding: 0.8rem;
+      border: 2px solid #ff9800;
+      border-radius: 6px;
     }
 
     .clients-table tr.em-group-member {
@@ -416,29 +424,37 @@
           {% for device in devices %}
           {% if device.is_em_group %}
           <!-- EM Group Row (collapsed) -->
-          <tr class="multi-em-row em-group-header" data-group-id="{{ device.server_unit_id }}" onclick="toggleEmGroup(this)">
+          <tr class="multi-em-row em-group-header" data-group-id="{{ device.server_unit_id }}">
             <td>{{ device.project_nr if device.project_nr else '-' }}</td>
             <td>{{ device.site }}</td>
             <td>
               <strong>{{ device.name }}</strong> 
               <span style="color: #27ae60; font-weight: bold;">({{ device.member_count }} enheder)</span>
-              <span class="expand-icon">▼</span>
+              <span class="expand-icon" onclick="toggleEmGroup(this.closest('tr'))" style="cursor: pointer; margin-left: 0.5rem;">▼</span>
             </td>
-            <td colspan="3" style="text-align: center; color: #666;">Klik for at se enheder</td>
+            <td colspan="3" style="text-align: center; color: #666;">Klik ▼ for at se enheder</td>
             <td>{{ device.server_unit_id }}</td>
-            <td>
-              <strong style="color: #e67e22;">
+            <td onclick="event.stopPropagation();" style="position: relative;">
+              <div id="group_collection_{{ device.server_unit_id }}" style="display: inline-block;">
                 {% if device.group_data_collection %}
-                  {{ device.group_data_collection }}
+                  <strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
+                          onclick="editGroupCollectionInline(this, '{{ device.server_unit_id }}', '{{ device.em_group }}', '{{ device.group_data_collection }}')"
+                          title="Klik for at redigere">
+                    📊 {{ device.group_data_collection }}
+                  </strong>
                 {% else %}
-                  <span style="color: #e74c3c;">Mangler! Klik for at redigere</span>
+                  <strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
+                          onclick="editGroupCollectionInline(this, '{{ device.server_unit_id }}', '{{ device.em_group }}', '')"
+                          title="Klik for at tilføje">
+                    ⚠️ Mangler! Klik for at tilføje
+                  </strong>
                 {% endif %}
-              </strong>
+              </div>
             </td>
             <td colspan="9" style="text-align: center; color: #666;">Gruppe data</td>
-            <td class="actions">
-              <button class="btn btn-edit" onclick="event.stopPropagation(); editEmGroup(this)" data-group='{{ device|tojson }}'>Rediger</button>
-              <button class="btn btn-delete" onclick="event.stopPropagation(); deleteEmGroup(this)" data-unit-id="{{ device.server_unit_id }}"
+            <td class="actions" onclick="event.stopPropagation();">
+              <button class="btn btn-edit" onclick="editEmGroup(this)" data-group='{{ device|tojson }}'>Rediger</button>
+              <button class="btn btn-delete" onclick="deleteEmGroup(this)" data-unit-id="{{ device.server_unit_id }}"
                 data-site="{{ device.site }}">Slet</button>
             </td>
           </tr>
@@ -1601,47 +1617,110 @@
       });
     }
 
+    // Inline edit Group Data Collection directly in the table
+    function editGroupCollectionInline(element, serverUnitId, emGroup, currentValue) {
+      const container = element.closest('td');
+      const currentText = currentValue || '';
+      
+      // Create input field
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = currentText;
+      input.style.cssText = 'padding: 0.3rem; font-size: 1em; width: 200px; border: 2px solid #3498db; border-radius: 4px;';
+      input.placeholder = 'f.eks. 10340_EM_1';
+      
+      // Create save/cancel buttons
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.cssText = 'margin-top: 0.3rem; display: flex; gap: 0.3rem;';
+      
+      const saveBtn = document.createElement('button');
+      saveBtn.textContent = '💾 Gem';
+      saveBtn.className = 'btn btn-primary';
+      saveBtn.style.cssText = 'padding: 0.3rem 0.6rem; font-size: 0.9rem;';
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = '❌ Annuller';
+      cancelBtn.className = 'btn btn-back';
+      cancelBtn.style.cssText = 'padding: 0.3rem 0.6rem; font-size: 0.9rem;';
+      
+      // Replace element with input
+      const originalHtml = container.innerHTML;
+      container.innerHTML = '';
+      container.appendChild(input);
+      container.appendChild(buttonContainer);
+      buttonContainer.appendChild(saveBtn);
+      buttonContainer.appendChild(cancelBtn);
+      
+      input.focus();
+      input.select();
+      
+      // Save function
+      const save = () => {
+        const newValue = input.value.trim();
+        if (confirm(`Opdater Group Data Collection til "${newValue || 'auto-genereret'}" for alle enheder i gruppen "${emGroup}"?`)) {
+          fetch('/update_group_collection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              server_unit_id: parseInt(serverUnitId),
+              em_group: emGroup,
+              group_data_collection: newValue
+            })
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Update display
+              const displayDiv = document.createElement('div');
+              displayDiv.id = `group_collection_${serverUnitId}`;
+              if (newValue) {
+                displayDiv.innerHTML = `<strong style="color: #27ae60; font-size: 1.1em; cursor: pointer;" 
+                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '${newValue}')"
+                  title="Klik for at redigere">📊 ${newValue}</strong>`;
+              } else {
+                displayDiv.innerHTML = `<strong style="color: #e74c3c; font-size: 1.1em; cursor: pointer;" 
+                  onclick="editGroupCollectionInline(this, '${serverUnitId}', '${emGroup}', '')"
+                  title="Klik for at tilføje">⚠️ Mangler! Klik for at tilføje</strong>`;
+              }
+              container.innerHTML = '';
+              container.appendChild(displayDiv);
+            } else {
+              alert('❌ Fejl: ' + data.error);
+              container.innerHTML = originalHtml;
+            }
+          })
+          .catch(error => {
+            alert('❌ Fejl: ' + error.message);
+            container.innerHTML = originalHtml;
+          });
+        }
+      };
+      
+      // Cancel function
+      const cancel = () => {
+        container.innerHTML = originalHtml;
+      };
+      
+      saveBtn.onclick = save;
+      cancelBtn.onclick = cancel;
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          save();
+        } else if (e.key === 'Escape') {
+          cancel();
+        }
+      };
+    }
+
     // Edit EM group (allows editing group_data_collection for all members)
     function editEmGroup(button) {
       const groupData = JSON.parse(button.getAttribute('data-group'));
-      const currentCollection = groupData.group_data_collection || '';
-      const newCollection = prompt(
-        `Rediger Group Data Collection for EM gruppen "${groupData.site}"\n\n` +
-        `Nuværende: ${currentCollection || 'Ikke sat'}\n\n` +
-        `Indtast nyt navn (eller lad stå tomt for auto-generering):`,
-        currentCollection
+      editGroupCollectionInline(
+        button,
+        groupData.server_unit_id,
+        groupData.em_group,
+        groupData.group_data_collection || ''
       );
-      
-      if (newCollection === null) {
-        return; // User cancelled
-      }
-      
-      const collectionName = newCollection.trim();
-      
-      if (confirm(`Opdater Group Data Collection til "${collectionName || 'auto-genereret'}" for alle ${groupData.member_count} enheder i gruppen?`)) {
-        // Update all members in the group via API
-        fetch('/update_group_collection', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            server_unit_id: groupData.server_unit_id,
-            em_group: groupData.em_group,
-            group_data_collection: collectionName
-          })
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            alert(`✅ ${data.modified_count} enheder opdateret!`);
-            window.location.reload();
-          } else {
-            alert('❌ Fejl: ' + data.error);
-          }
-        })
-        .catch(error => {
-          alert('❌ Fejl: ' + error.message);
-        });
-      }
     }
 
     // Delete EM group (deletes all members)

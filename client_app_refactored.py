@@ -1241,6 +1241,43 @@ class EmGroupPoller:
         group_meta.import_reason = "; ".join(r for r in reasons_imp if r)
         group_meta.export_reason = "; ".join(r for r in reasons_exp if r)
 
+        # Check if any member has import/export registers configured
+        has_import_register = False
+        has_export_register = False
+        for member in state.members:
+            regs = member.cfg.get("registers", {})
+            if regs.get("total_import"):
+                has_import_register = True
+            if regs.get("total_export"):
+                has_export_register = True
+
+        # If no import/export registers, calculate from summed active power
+        if not has_import_register and not has_export_register:
+            # Calculate energy from active power by integrating over time
+            effective_interval = max(float(target_interval), 1.0)
+            energy_wh = (total_ap * effective_interval) / 3600.0
+            
+            if total_ap > 0:
+                # Positive power = import
+                total_imp_sum = state.last_import + energy_wh
+                total_exp_sum = state.last_export  # Keep export unchanged
+            elif total_ap < 0:
+                # Negative power = export
+                total_imp_sum = state.last_import  # Keep import unchanged
+                total_exp_sum = state.last_export + abs(energy_wh)
+            else:
+                # Zero power - keep values unchanged
+                total_imp_sum = state.last_import
+                total_exp_sum = state.last_export
+            
+            # Update meta to indicate these are calculated values
+            group_meta.import_raw = total_imp_sum
+            group_meta.export_raw = total_exp_sum
+            if not group_meta.import_reason:
+                group_meta.import_reason = "Beregnet fra active power"
+            if not group_meta.export_reason:
+                group_meta.export_reason = "Beregnet fra active power"
+
         # Validate the summed totals (not individual member values)
         # This ensures we only save valid summed values to the database
         # Track if this is the first successful read for the group
