@@ -63,6 +63,7 @@ DB_SAVE_INTERVAL_SECONDS = 30
 CONFIG_RELOAD_INTERVAL_SECONDS = 120  # 5 minutes
 
 MAX_REASONABLE_DIFF_WH = 500_000    # spikes above this are rejected
+MAX_REASONABLE_DIFF_WH_EM_GROUP = 1_000_000  # Higher tolerance for EM groups (sum of multiple meters)
 MAX_REASONABLE_POWER_W = 1_000_000  # 1 MW
 FLOAT_TOLERANCE_WH = 0.01
 MIN_TOTAL_VALUE = 0
@@ -894,7 +895,11 @@ class DevicePoller:
         dev = state.device_cfg
         srv = state.server_cfg
 
-        actual_interval = (now - state.last_run_at) if state.last_run_at > 0 else random.randint(*SLEEP_SECONDS_RANGE)
+        # Calculate actual interval for display/debugging
+        # Use target interval (2-3s) for energy calculations to avoid issues with delays
+        raw_interval = (now - state.last_run_at) if state.last_run_at > 0 else random.randint(*SLEEP_SECONDS_RANGE)
+        actual_interval = min(raw_interval, 10.0)  # Cap at 10s for display purposes
+        target_interval = random.randint(*SLEEP_SECONDS_RANGE)  # Use consistent target for energy calc
 
         # Ensure device connection.
         if not state.device_reader or not state.device_reader.is_open():
@@ -1049,6 +1054,42 @@ class EmGroupPoller:
         self._reporter = reporter
         # Create validator for validating summed totals
         self._validator = EnergyValidator()
+    
+    def _validate_total_with_tolerance(self, new: float, last: float, value_name: str, first_read: bool, max_diff: float) -> tuple[bool, float, str]:
+        """Validate total with custom tolerance (for EM groups that sum multiple meters).
+        
+        Uses higher threshold for EM groups since we're summing values from multiple meters,
+        which can result in larger differences.
+        """
+        if new < MIN_TOTAL_VALUE:
+            return False, last, f"{value_name} negativ ({new})"
+
+        if first_read:
+            return True, new, "første læsning efter restart"
+
+        if last <= 1.0:
+            return True, new, "første læsning"
+
+        # Detect meter reset or data deletion (new value is much lower)
+        if new < last * MAX_TOTAL_RESET_THRESHOLD:
+            return True, new, "meter reset eller data nulstillet"
+
+        diff = new - last
+
+        if diff < -FLOAT_TOLERANCE_WH:
+            return False, last, f"{value_name} faldt ({last} -> {new})"
+
+        # Early phase tolerance.
+        if last < 10000 and diff > max_diff:
+            extended_limit = max_diff * 10
+            if diff > extended_limit:
+                return False, last, f"{value_name} spike ({diff} Wh) selv med udvidet grænse"
+            return True, new, f"OK (tidlig fase, diff={diff} Wh)"
+
+        if diff > max_diff:
+            return False, last, f"{value_name} spike ({diff} Wh)"
+
+        return True, new, "OK"
 
     def poll_once(self, state: EmGroupState) -> None:
         now = time.time()
@@ -1057,7 +1098,11 @@ class EmGroupPoller:
 
         site = state.site
         srv = state.server_cfg
-        actual_interval = (now - state.last_run_at) if state.last_run_at > 0 else random.randint(*SLEEP_SECONDS_RANGE)
+        # Calculate actual interval for display/debugging
+        # Use target interval (2-3s) for energy calculations to avoid issues with delays
+        raw_interval = (now - state.last_run_at) if state.last_run_at > 0 else random.randint(*SLEEP_SECONDS_RANGE)
+        actual_interval = min(raw_interval, 10.0)  # Cap at 10s for display purposes
+        target_interval = random.randint(*SLEEP_SECONDS_RANGE)  # Use consistent target for energy calc
 
         # Ensure server connection.
         if not state.server_reader or not state.server_reader.is_open():
@@ -1108,12 +1153,14 @@ class EmGroupPoller:
                     continue
 
             try:
+                # Use target interval (2-3s) for energy calculation, not actual elapsed time
+                target_interval = random.randint(*SLEEP_SECONDS_RANGE)
                 ap, imp, exp, meta = self._energy_reader.read(
                     member.reader,
                     em_cfg,
                     0.0,
                     0.0,
-                    actual_interval,
+                    target_interval,
                     first_read=True,  # Always treat as first read for members - we only validate summed totals
                 )
             except ModbusException as e:
@@ -1174,10 +1221,11 @@ class EmGroupPoller:
         # Track if this is the first successful read for the group
         first_read_for_group = (state.last_import == 0.0 and state.last_export == 0.0 and state.run_count == 0)
         
-        # Validate total_import sum
+        # Validate total_import sum with EM group tolerance (higher threshold since we sum multiple meters)
         if total_imp_sum >= 0:  # Allow 0 values
-            ok_imp, validated_imp, reason_imp = self._validator.validate_total(
-                total_imp_sum, state.last_import, "Import (sum)", first_read=first_read_for_group
+            # For EM groups, use higher tolerance for spikes
+            ok_imp, validated_imp, reason_imp = self._validate_total_with_tolerance(
+                total_imp_sum, state.last_import, "Import (sum)", first_read_for_group, MAX_REASONABLE_DIFF_WH_EM_GROUP
             )
             if not ok_imp:
                 group_meta.import_invalid = True
@@ -1191,10 +1239,10 @@ class EmGroupPoller:
             else:
                 total_imp_sum = validated_imp
         
-        # Validate total_export sum
+        # Validate total_export sum with EM group tolerance
         if total_exp_sum >= 0:  # Allow 0 values
-            ok_exp, validated_exp, reason_exp = self._validator.validate_total(
-                total_exp_sum, state.last_export, "Export (sum)", first_read=first_read_for_group
+            ok_exp, validated_exp, reason_exp = self._validate_total_with_tolerance(
+                total_exp_sum, state.last_export, "Export (sum)", first_read_for_group, MAX_REASONABLE_DIFF_WH_EM_GROUP
             )
             if not ok_exp:
                 group_meta.export_invalid = True
