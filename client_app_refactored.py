@@ -689,11 +689,17 @@ class MongoEnergyRepository:
     def collection_name(device_cfg: dict[str, Any]) -> str:
         """Resolve the collection name from the device config."""
 
-        if "data_collection" in device_cfg:
-            return device_cfg["data_collection"]
-        project = device_cfg.get("project_nr", "")
-        name = device_cfg.get("name", "device")
-        return f"{project}_{name}" if project else name
+        # Check if data_collection is explicitly set and not empty
+        data_coll = device_cfg.get("data_collection")
+        if data_coll and str(data_coll).strip():
+            return str(data_coll).strip()
+        
+        # Fallback: generate from project_nr and name
+        project = device_cfg.get("project_nr", "").strip()
+        name = device_cfg.get("name", "device").strip()
+        # Clean name: remove special characters, keep only alphanumeric and underscore
+        name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in name.replace(" ", "_"))
+        return f"{project}_{name_clean}" if project else name_clean
 
     def get_collection(self, device_cfg: dict[str, Any]) -> Collection:
         """Return the collection for the device and ensure an index (cached)."""
@@ -1473,7 +1479,7 @@ class StateFactory:
             if not group_devices:
                 continue
 
-            # Use group_data_collection if available, otherwise fall back to em_group name.
+            # Use group_data_collection if available, otherwise auto-generate as project_nr_Device_Navn
             # Individual EM devices in a group do NOT need their own data_collection.
             first = group_devices[0]
             # Get group_data_collection, ensuring it's not None, empty, or "undefined"
@@ -1481,13 +1487,15 @@ class StateFactory:
             if gdc and str(gdc).strip() and str(gdc).strip().lower() != "undefined":
                 group_collection_name = str(gdc).strip()
             else:
-                # Fallback to data_collection or group_name
-                dc = first.get("data_collection")
-                if dc and str(dc).strip() and str(dc).strip().lower() != "undefined":
-                    group_collection_name = str(dc).strip()
+                # Auto-generate collection name as project_nr_Device_Navn
+                project_nr = first.get("project_nr", "").strip()
+                device_name = group_name.replace(" ", "_") if group_name else "unknown_group"
+                # Clean device name: remove special characters, keep only alphanumeric and underscore
+                device_name = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name)
+                if project_nr:
+                    group_collection_name = f"{project_nr}_{device_name}"
                 else:
-                    # Ultimate fallback: use group name as collection
-                    group_collection_name = group_name.replace(" ", "_") if group_name else "unknown_group"
+                    group_collection_name = device_name
             group_device_cfg = {
                 "site": group_name,
                 "project_nr": first.get("project_nr", ""),

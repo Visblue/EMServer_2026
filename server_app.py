@@ -423,7 +423,7 @@ def add_device():
         logger.info(f"ADD_DEVICE: has_em_group={has_em_group}")
         
         if has_em_group:
-            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'group_data_collection', 'registers']
+            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'registers']
         else:
             required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'data_collection', 'registers']
 
@@ -438,6 +438,27 @@ def add_device():
             device_data['project_nr'] = None
         if 'em_group' not in device_data:
             device_data['em_group'] = None
+        
+        # Auto-generate group_data_collection if not provided for EM groups
+        if has_em_group:
+            group_data_collection = device_data.get('group_data_collection', '').strip()
+            if not group_data_collection or group_data_collection.lower() == 'undefined':
+                # Auto-generate as project_nr_Device_Name
+                project_nr = str(device_data.get('project_nr', '')).strip()
+                device_name = str(device_data.get('em_group', '')).strip()
+                if not device_name:
+                    device_name = str(device_data.get('name', '')).strip()
+                
+                # Clean device name: remove special characters, keep only alphanumeric and underscore
+                device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
+                
+                if project_nr:
+                    device_data['group_data_collection'] = f"{project_nr}_{device_name_clean}"
+                else:
+                    device_data['group_data_collection'] = device_name_clean
+                logger.info(f"Auto-generated group_data_collection: {device_data['group_data_collection']}")
+            else:
+                device_data['group_data_collection'] = group_data_collection
 
         # Validate server_unit_id range (1-200, matching NUM_SLAVES)
         try:
@@ -517,6 +538,30 @@ def update_device():
         if reading not in ('holding', 'input'):
             return jsonify({'success': False, 'error': 'Invalid reading type. Must be "holding" or "input"'}), 400
         device_data['reading'] = reading
+
+        # Check if this is an EM group device
+        has_em_group = bool(device_data.get('em_group') and str(device_data.get('em_group')).strip())
+        
+        # Auto-generate group_data_collection if not provided for EM groups
+        if has_em_group:
+            group_data_collection = device_data.get('group_data_collection', '').strip()
+            if not group_data_collection or group_data_collection.lower() == 'undefined':
+                # Auto-generate as project_nr_Device_Name
+                project_nr = str(device_data.get('project_nr', '')).strip()
+                device_name = str(device_data.get('em_group', '')).strip()
+                if not device_name:
+                    device_name = str(device_data.get('name', '')).strip()
+                
+                # Clean device name: remove special characters, keep only alphanumeric and underscore
+                device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
+                
+                if project_nr:
+                    device_data['group_data_collection'] = f"{project_nr}_{device_name_clean}"
+                else:
+                    device_data['group_data_collection'] = device_name_clean
+                logger.info(f"Auto-generated group_data_collection in update: {device_data['group_data_collection']}")
+            else:
+                device_data['group_data_collection'] = group_data_collection
 
         # Validate server_unit_id range (1-200, matching NUM_SLAVES)
         try:
