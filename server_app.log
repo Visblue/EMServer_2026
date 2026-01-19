@@ -1,3 +1,11 @@
 2026-01-14 14:41:46,003 - INFO - Started device_list update thread
 2026-01-14 14:43:28,309 - INFO - Successfully updated device: 10690 Konvalvej PV
 2026-01-14 15:05:49,374 - INFO - Started device_list update thread
+2026-01-19 11:28:22,323 - INFO - Started device_list update thread
+2026-01-19 11:32:58,933 - INFO - Started device_list update thread
+2026-01-19 11:35:43,910 - INFO - ADD_DEVICE received: em_group='Alssund Gymnasium EM', group_data_collection='10340_EM_1', data_collection='None'
+2026-01-19 11:35:43,911 - INFO - ADD_DEVICE: has_em_group=True
+2026-01-19 11:35:43,914 - INFO - Successfully added new device: Alssund Gymnasium EM_1
+2026-01-19 11:35:43,919 - INFO - ADD_DEVICE received: em_group='Alssund Gymnasium EM', group_data_collection='10340_EM_1', data_collection='None'
+2026-01-19 11:35:43,919 - INFO - ADD_DEVICE: has_em_group=True
+2026-01-19 11:35:43,922 - INFO - Successfully added new device: Alssund Gymnasium EM_2

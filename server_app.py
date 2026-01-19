@@ -362,6 +362,9 @@ def add_device():
     try:
         # Get JSON data from request
         device_data = request.get_json()
+        
+        # Debug: log what we received
+        logger.info(f"ADD_DEVICE received: em_group='{device_data.get('em_group')}', group_data_collection='{device_data.get('group_data_collection')}', data_collection='{device_data.get('data_collection')}'")
 
         # Normalize/validate read type (holding/input). Default is holding.
         reading = str(device_data.get('reading') or device_data.get('table') or 'holding').strip().lower()
@@ -371,13 +374,19 @@ def add_device():
 
         # For em_group devices, use group_data_collection instead of data_collection.
         # Individual data_collection is not required for em_group members.
-        if device_data.get('em_group'):
+        # Check if em_group has an actual non-empty value (not just empty string)
+        has_em_group = bool(device_data.get('em_group') and str(device_data.get('em_group')).strip())
+        logger.info(f"ADD_DEVICE: has_em_group={has_em_group}")
+        
+        if has_em_group:
             required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'group_data_collection', 'registers']
         else:
             required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'data_collection', 'registers']
 
         for field in required_fields:
-            if field not in device_data:
+            # Check both if field exists AND if it has a non-empty value
+            value = device_data.get(field)
+            if value is None or (isinstance(value, str) and not value.strip()):
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
 
         # Optional fields - set defaults if not provided
@@ -392,7 +401,7 @@ def add_device():
 
         # Check if server_unit_id already exists (unless it's part of an em_group)
         existing = list(devices_collection.find({"server_unit_id": device_data['server_unit_id']}, {"_id": 0, "em_group": 1}))
-        if existing and not device_data.get('em_group'):
+        if existing and not has_em_group:
             return jsonify({'success': False, 'error': f'Server Unit ID {device_data["server_unit_id"]} already exists. Use em_group if multiple devices should write to same unit_id'}), 400
 
         devices_collection.insert_one(device_data)
