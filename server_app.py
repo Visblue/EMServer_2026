@@ -59,18 +59,62 @@ def get_config():
         devices_collection = db[MONGO_COLLECTION]
 
         # Return both site and device name (keyed by server_unit_id)
+        # For EM-groups, show the group name instead of individual device names
         Devices = {}
-        for device in devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "site": 1, "name": 1}):
+        em_groups_by_unit_id = {}  # Track EM groups by server_unit_id
+        
+        # First pass: collect EM groups
+        for device in devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "site": 1, "name": 1, "em_group": 1, "group_data_collection": 1}):
             if device.get("server_unit_id") is None:
                 continue
             try:
                 key = int(device["server_unit_id"])
             except Exception:
                 continue
-            Devices[key] = {
-                'site': device.get('site', ''),
-                'name': device.get('name', 'Unknown')
-            }
+            
+            em_group = device.get("em_group")
+            if em_group:
+                # This is an EM group member - track the group
+                if key not in em_groups_by_unit_id:
+                    em_groups_by_unit_id[key] = {
+                        'em_group': em_group,
+                        'group_data_collection': device.get('group_data_collection', ''),
+                        'members': []
+                    }
+                em_groups_by_unit_id[key]['members'].append({
+                    'site': device.get('site', ''),
+                    'name': device.get('name', 'Unknown')
+                })
+        
+        # Second pass: populate Devices dict
+        # For EM-groups, use group name; for single devices, use device name
+        for device in devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "site": 1, "name": 1, "em_group": 1}):
+            if device.get("server_unit_id") is None:
+                continue
+            try:
+                key = int(device["server_unit_id"])
+            except Exception:
+                continue
+            
+            # If this server_unit_id has an EM group, use group info
+            if key in em_groups_by_unit_id:
+                group_info = em_groups_by_unit_id[key]
+                Devices[key] = {
+                    'site': group_info['em_group'],  # Use group name as site
+                    'name': f"EM_GROUP: {group_info['em_group']}",  # Mark as EM group
+                    'is_em_group': True,
+                    'group_data_collection': group_info['group_data_collection'],
+                    'member_count': len(group_info['members'])
+                }
+            else:
+                # Single device (not part of EM group)
+                if key not in Devices:  # Only set if not already set (avoid overwriting EM group)
+                    Devices[key] = {
+                        'site': device.get('site', ''),
+                        'name': device.get('name', 'Unknown'),
+                        'is_em_group': False
+                    }
+        
         #logger.info(f"Successfully fetched device list: {Devices}")
         return Devices
     except Exception as e:
@@ -395,14 +439,44 @@ def add_device():
         if 'em_group' not in device_data:
             device_data['em_group'] = None
 
+        # Validate server_unit_id range (1-200, matching NUM_SLAVES)
+        try:
+            server_unit_id = int(device_data.get('server_unit_id'))
+            if server_unit_id < 1 or server_unit_id > NUM_SLAVES:
+                return jsonify({'success': False, 'error': f'Server Unit ID must be between 1 and {NUM_SLAVES}'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid server_unit_id format. Must be a number'}), 400
+
         # Connect to MongoDB using global client
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
 
         # Check if server_unit_id already exists (unless it's part of an em_group)
-        existing = list(devices_collection.find({"server_unit_id": device_data['server_unit_id']}, {"_id": 0, "em_group": 1}))
-        if existing and not has_em_group:
-            return jsonify({'success': False, 'error': f'Server Unit ID {device_data["server_unit_id"]} already exists. Use em_group if multiple devices should write to same unit_id'}), 400
+        existing_devices = list(devices_collection.find(
+            {"server_unit_id": server_unit_id}, 
+            {"_id": 0, "em_group": 1, "site": 1, "name": 1}
+        ))
+        
+        if existing_devices:
+            # If not part of EM group, check if any existing device is also not in EM group
+            existing_non_group = [d for d in existing_devices if not d.get('em_group')]
+            if existing_non_group and not has_em_group:
+                existing_site = existing_non_group[0].get('site', 'Unknown')
+                existing_name = existing_non_group[0].get('name', 'Unknown')
+                return jsonify({
+                    'success': False, 
+                    'error': f'Server Unit ID {server_unit_id} is already in use by "{existing_site}" ({existing_name}). Use em_group if multiple devices should write to same unit_id'
+                }), 400
+            
+            # If adding to EM group, check if existing devices are in different EM group
+            if has_em_group:
+                different_groups = [d for d in existing_devices if d.get('em_group') and d.get('em_group') != device_data.get('em_group')]
+                if different_groups:
+                    existing_group = different_groups[0].get('em_group', 'Unknown')
+                    return jsonify({
+                        'success': False,
+                        'error': f'Server Unit ID {server_unit_id} is already used by EM group "{existing_group}". Cannot use same ID for different EM group "{device_data.get("em_group")}"'
+                    }), 400
 
         devices_collection.insert_one(device_data)
         logger.info(f"Successfully added new device: {device_data.get('site')}")
@@ -444,21 +518,56 @@ def update_device():
             return jsonify({'success': False, 'error': 'Invalid reading type. Must be "holding" or "input"'}), 400
         device_data['reading'] = reading
 
+        # Validate server_unit_id range (1-200, matching NUM_SLAVES)
+        try:
+            new_server_unit_id = int(device_data.get('server_unit_id'))
+            if new_server_unit_id < 1 or new_server_unit_id > NUM_SLAVES:
+                return jsonify({'success': False, 'error': f'Server Unit ID must be between 1 and {NUM_SLAVES}'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid server_unit_id format. Must be a number'}), 400
+
         # Connect to MongoDB using global client
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
 
-        # Check if new server_unit_id conflicts with another device
-        new_server_unit_id = int(device_data.get('server_unit_id'))
-        if new_server_unit_id != original_server_unit_id:
-            conflict = devices_collection.find_one({"server_unit_id": device_data.get('server_unit_id')}, {"_id": 1})
-            if conflict:
-                return jsonify({'success': False, 'error': f'Server Unit ID {device_data["server_unit_id"]} already exists'}), 400
-
-        # Replace the first matching device (same semantics as the old config-array approach)
+        # Find the device being updated
         existing = devices_collection.find_one({"server_unit_id": original_server_unit_id})
         if not existing:
             return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        # Check if new server_unit_id conflicts with another device
+        if new_server_unit_id != original_server_unit_id:
+            existing_em_group = existing.get('em_group')
+            new_em_group = device_data.get('em_group')
+            
+            # Find all devices using the new server_unit_id
+            conflicting_devices = list(devices_collection.find(
+                {"server_unit_id": new_server_unit_id},
+                {"_id": 1, "em_group": 1, "site": 1, "name": 1}
+            ))
+            
+            # Filter out the device we're updating (if it exists in the list)
+            conflicting_devices = [d for d in conflicting_devices if d['_id'] != existing['_id']]
+            
+            if conflicting_devices:
+                # Check if any conflict is with non-EM-group device
+                non_group_conflicts = [d for d in conflicting_devices if not d.get('em_group')]
+                if non_group_conflicts and not new_em_group:
+                    conflict_site = non_group_conflicts[0].get('site', 'Unknown')
+                    conflict_name = non_group_conflicts[0].get('name', 'Unknown')
+                    return jsonify({
+                        'success': False,
+                        'error': f'Server Unit ID {new_server_unit_id} is already in use by "{conflict_site}" ({conflict_name})'
+                    }), 400
+                
+                # Check if trying to use ID from different EM group
+                different_groups = [d for d in conflicting_devices if d.get('em_group') and d.get('em_group') != new_em_group]
+                if different_groups:
+                    conflict_group = different_groups[0].get('em_group', 'Unknown')
+                    return jsonify({
+                        'success': False,
+                        'error': f'Server Unit ID {new_server_unit_id} is already used by EM group "{conflict_group}". Cannot use same ID for different EM group'
+                    }), 400
 
         device_data['_id'] = existing['_id']
         res = devices_collection.replace_one({"_id": existing["_id"]}, device_data)

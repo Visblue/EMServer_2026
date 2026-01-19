@@ -1047,6 +1047,8 @@ class EmGroupPoller:
         self._energy_reader = energy_reader
         self._repo = repo
         self._reporter = reporter
+        # Create validator for validating summed totals
+        self._validator = EnergyValidator()
 
     def poll_once(self, state: EmGroupState) -> None:
         now = time.time()
@@ -1112,7 +1114,7 @@ class EmGroupPoller:
                     0.0,
                     0.0,
                     actual_interval,
-                    first_read=False,
+                    first_read=True,  # Always treat as first read for members - we only validate summed totals
                 )
             except ModbusException as e:
                 cat, sev = categorize_message(f"Modbus fejl: {e}")
@@ -1130,9 +1132,14 @@ class EmGroupPoller:
 
             member.consecutive_errors = 0
 
+            # Use raw values for summing (not validated values) - validation only happens on the summed total
+            # This ensures we sum the actual meter readings, not potentially incorrect validated values
             total_ap += ap
-            total_imp_sum += imp
-            total_exp_sum += exp
+            # Use raw import/export values if available, otherwise use validated values
+            imp_value = meta.import_raw if meta.import_raw is not None else imp
+            exp_value = meta.export_raw if meta.export_raw is not None else exp
+            total_imp_sum += imp_value
+            total_exp_sum += exp_value
             success_count += 1
 
             if meta.active_power_invalid:
@@ -1161,6 +1168,45 @@ class EmGroupPoller:
         group_meta.active_power_reason = "; ".join(r for r in reasons_ap if r)
         group_meta.import_reason = "; ".join(r for r in reasons_imp if r)
         group_meta.export_reason = "; ".join(r for r in reasons_exp if r)
+
+        # Validate the summed totals (not individual member values)
+        # This ensures we only save valid summed values to the database
+        # Track if this is the first successful read for the group
+        first_read_for_group = (state.last_import == 0.0 and state.last_export == 0.0 and state.run_count == 0)
+        
+        # Validate total_import sum
+        if total_imp_sum >= 0:  # Allow 0 values
+            ok_imp, validated_imp, reason_imp = self._validator.validate_total(
+                total_imp_sum, state.last_import, "Import (sum)", first_read=first_read_for_group
+            )
+            if not ok_imp:
+                group_meta.import_invalid = True
+                if group_meta.import_reason:
+                    group_meta.import_reason += f"; Sum validation failed: {reason_imp}"
+                else:
+                    group_meta.import_reason = f"Sum validation failed: {reason_imp}"
+                cat, sev = categorize_message(f"Import sum invalid: {reason_imp}")
+                self._reporter.record(ErrorEvent(site=site, message=f"Import sum invalid: {reason_imp}", category=cat, severity=sev))
+                total_imp_sum = state.last_import  # Keep last valid value
+            else:
+                total_imp_sum = validated_imp
+        
+        # Validate total_export sum
+        if total_exp_sum >= 0:  # Allow 0 values
+            ok_exp, validated_exp, reason_exp = self._validator.validate_total(
+                total_exp_sum, state.last_export, "Export (sum)", first_read=first_read_for_group
+            )
+            if not ok_exp:
+                group_meta.export_invalid = True
+                if group_meta.export_reason:
+                    group_meta.export_reason += f"; Sum validation failed: {reason_exp}"
+                else:
+                    group_meta.export_reason = f"Sum validation failed: {reason_exp}"
+                cat, sev = categorize_message(f"Export sum invalid: {reason_exp}")
+                self._reporter.record(ErrorEvent(site=site, message=f"Export sum invalid: {reason_exp}", category=cat, severity=sev))
+                total_exp_sum = state.last_export  # Keep last valid value
+            else:
+                total_exp_sum = validated_exp
 
         # Write aggregated values.
         try:

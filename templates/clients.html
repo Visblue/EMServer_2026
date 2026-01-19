@@ -475,10 +475,11 @@
         </div>
 
         <div class="form-group">
-          <label for="server_unit_id">Server Unit ID *</label>
-          <input type="number" id="server_unit_id" name="server_unit_id" required placeholder="f.eks. 23"
+          <label for="server_unit_id">Server Unit ID * (1-200)</label>
+          <input type="number" id="server_unit_id" name="server_unit_id" required min="1" max="200" placeholder="f.eks. 23"
             oninput="validateServerUnitId()">
-          <div id="serverUnitIdError" class="error-message">Dette Server Unit ID er allerede i brug</div>
+          <div id="serverUnitIdError" class="error-message"></div>
+          <small style="color: #666;">Må være mellem 1 og 200. Hvis flere enheder skal bruge samme ID, brug EM Group.</small>
         </div>
 
         <div class="form-group">
@@ -655,8 +656,11 @@
           </div>
 
           <div class="form-group">
-            <label for="multi_server_unit_id">Server Unit ID *</label>
-            <input type="number" id="multi_server_unit_id" name="multi_server_unit_id" required placeholder="f.eks. 15">
+            <label for="multi_server_unit_id">Server Unit ID * (1-200)</label>
+            <input type="number" id="multi_server_unit_id" name="multi_server_unit_id" required min="1" max="200" placeholder="f.eks. 15"
+              oninput="validateMultiServerUnitId()">
+            <div id="multiServerUnitIdError" class="error-message"></div>
+            <small style="color: #666;">Må være mellem 1 og 200. Alle enheder i EM gruppen vil bruge dette ID.</small>
             <small style="color: #666;">Alle EM'er skrives til dette unit ID</small>
           </div>
 
@@ -715,9 +719,7 @@
       const input = document.getElementById('server_unit_id');
       const errorMsg = document.getElementById('serverUnitIdError');
       const submitBtn = document.getElementById('submitBtn');
-      const value = parseInt(input.value);
-      const originalValue = parseInt(document.getElementById('originalServerUnitId').value);
-
+      
       // Skip validation if empty
       if (!input.value) {
         input.classList.remove('error');
@@ -726,11 +728,24 @@
         return true;
       }
 
+      const value = parseInt(input.value);
+      const originalValue = parseInt(document.getElementById('originalServerUnitId').value) || 0;
+
+      // Check range (1-200)
+      if (isNaN(value) || value < 1 || value > 200) {
+        input.classList.add('error');
+        errorMsg.textContent = 'Server Unit ID skal være mellem 1 og 200';
+        errorMsg.classList.add('show');
+        submitBtn.disabled = true;
+        return false;
+      }
+
       // Check if ID exists (but allow current ID in edit mode)
       const isDuplicate = existingServerUnitIds.includes(value) && value !== originalValue;
 
       if (isDuplicate) {
         input.classList.add('error');
+        errorMsg.textContent = `Server Unit ID ${value} er allerede i brug. Vælg et andet ID eller brug EM Group hvis flere enheder skal bruge samme ID.`;
         errorMsg.classList.add('show');
         submitBtn.disabled = true;
         return false;
@@ -1305,6 +1320,46 @@
       }
     }
 
+    // Validate multi-EM server unit ID
+    function validateMultiServerUnitId() {
+      const input = document.getElementById('multi_server_unit_id');
+      const errorMsg = document.getElementById('multiServerUnitIdError');
+      
+      if (!input.value) {
+        input.classList.remove('error');
+        errorMsg.classList.remove('show');
+        return true;
+      }
+
+      const value = parseInt(input.value);
+      const emGroup = document.getElementById('multi_em_group').value.trim();
+
+      // Check range (1-200)
+      if (isNaN(value) || value < 1 || value > 200) {
+        input.classList.add('error');
+        errorMsg.textContent = 'Server Unit ID skal være mellem 1 og 200';
+        errorMsg.classList.add('show');
+        return false;
+      }
+
+      // Check if ID conflicts with different EM group
+      if (multiEmExistingDevices && multiEmExistingDevices.length > 0) {
+        const conflictingDevice = multiEmExistingDevices.find(d =>
+          d.server_unit_id === value && d.em_group && d.em_group !== emGroup
+        );
+        if (conflictingDevice) {
+          input.classList.add('error');
+          errorMsg.textContent = `Server Unit ID ${value} er allerede i brug af EM group "${conflictingDevice.em_group}"`;
+          errorMsg.classList.add('show');
+          return false;
+        }
+      }
+
+      input.classList.remove('error');
+      errorMsg.classList.remove('show');
+      return true;
+    }
+
     document.getElementById('addMultiEmForm').addEventListener('submit', async function (event) {
       event.preventDefault();
 
@@ -1314,12 +1369,18 @@
       const multiReading = document.getElementById('multi_reading').value;
       const groupDataCollection = document.getElementById('multi_group_data_collection').value.trim();
 
-      // Validate server_unit_id
+      // Validate server_unit_id range
+      if (serverUnitId < 1 || serverUnitId > 200) {
+        alert(`❌ Server Unit ID skal være mellem 1 og 200!`);
+        return;
+      }
+
+      // Validate server_unit_id conflicts
       const conflictingDevice = multiEmExistingDevices.find(d =>
-        d.server_unit_id === serverUnitId && d.em_group !== emGroup
+        d.server_unit_id === serverUnitId && d.em_group && d.em_group !== emGroup
       );
       if (conflictingDevice) {
-        alert(`❌ Server Unit ID ${serverUnitId} er allerede i brug af "${conflictingDevice.site}"!\nBrug et andet Unit ID eller samme EM Group.`);
+        alert(`❌ Server Unit ID ${serverUnitId} er allerede i brug af EM group "${conflictingDevice.em_group}"!\nBrug et andet Unit ID eller samme EM Group.`);
         return;
       }
 

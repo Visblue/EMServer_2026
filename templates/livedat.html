@@ -388,6 +388,15 @@
     .slaves-table tbody tr.charger-row:hover {
       background-color: #b3ffb3;
     }
+
+    .slaves-table tbody tr.multi-em-row {
+      background-color: #fff4e6;
+      border-left: 4px solid #ff9800;
+    }
+
+    .slaves-table tbody tr.multi-em-row:hover {
+      background-color: #ffe0b2;
+    }
   </style>
 </head>
 
@@ -461,12 +470,19 @@
               </thead>
               <tbody>
                 {% for slave_id, values in slave_values.items() %}
-                {% set device_name = sites.get(slave_id, {}).get('name', '').upper() %}
+                {% set device_info = sites.get(slave_id, {}) %}
+                {% set device_name = device_info.get('name', '').upper() %}
+                {% set is_em_group = device_info.get('is_em_group', False) %}
                 <tr
-                  class="{% if 'PV' in device_name %}pv-row{% elif 'BUILDING' in device_name %}building-row{% elif 'HEAT' in device_name %}heat-row{% elif 'CHARGER' in device_name or 'CHARGE' in device_name %}charger-row{% endif %}">
+                  class="{% if is_em_group %}multi-em-row{% elif 'PV' in device_name %}pv-row{% elif 'BUILDING' in device_name %}building-row{% elif 'HEAT' in device_name %}heat-row{% elif 'CHARGER' in device_name or 'CHARGE' in device_name %}charger-row{% endif %}">
                   <td>{{ slave_id }}</td>
-                  <td>{{ sites.get(slave_id, {}).get('site', 'Not used') }}</td>
-                  <td>{{ sites.get(slave_id, {}).get('name', '-') }}</td>
+                  <td>{{ device_info.get('site', 'Not used') }}</td>
+                  <td>
+                    {{ device_info.get('name', '-') }}
+                    {% if is_em_group %}
+                      <span style="color: #27ae60; font-weight: bold;">(EM Group - {{ device_info.get('member_count', '?') }} enheder)</span>
+                    {% endif %}
+                  </td>
                   {% for value in values %}
                   <td>{{ value }}</td>
                   {% endfor %}
