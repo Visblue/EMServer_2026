@@ -394,7 +394,41 @@ def clients():
         # Use global client
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
-        devices = list(devices_collection.find({}, {"_id": 0}))
+        all_devices = list(devices_collection.find({}, {"_id": 0}))
+        
+        # Group EM devices by em_group and server_unit_id
+        em_groups = {}  # {(em_group, server_unit_id): [devices]}
+        single_devices = []
+        
+        for device in all_devices:
+            em_group = device.get('em_group')
+            if em_group:
+                key = (em_group, device.get('server_unit_id'))
+                if key not in em_groups:
+                    em_groups[key] = []
+                em_groups[key].append(device)
+            else:
+                single_devices.append(device)
+        
+        # Convert EM groups to display format (one row per group)
+        grouped_devices = []
+        for (em_group, server_unit_id), members in em_groups.items():
+            if members:
+                first = members[0]
+                grouped_devices.append({
+                    'is_em_group': True,
+                    'em_group': em_group,
+                    'server_unit_id': server_unit_id,
+                    'project_nr': first.get('project_nr'),
+                    'site': em_group,
+                    'name': f"EM_GROUP: {em_group}",
+                    'group_data_collection': first.get('group_data_collection'),
+                    'members': members,
+                    'member_count': len(members)
+                })
+        
+        # Combine single devices and grouped EM devices
+        devices = single_devices + grouped_devices
         return render_template('clients.html', devices=devices)
     except Exception as e:
         logger.error(f"Error loading clients page: {e}")

@@ -177,6 +177,30 @@
       background-color: #ffcdd2;
     }
 
+    .clients-table tr.em-group-header {
+      cursor: pointer;
+      background-color: #ffe0b2;
+      font-weight: 600;
+    }
+
+    .clients-table tr.em-group-header:hover {
+      background-color: #ffcc80;
+    }
+
+    .clients-table tr.em-group-member {
+      background-color: #fff3e0;
+    }
+
+    .clients-table tr.em-group-member:hover {
+      background-color: #ffe0b2;
+    }
+
+    .expand-icon {
+      margin-left: 0.5rem;
+      font-size: 0.8rem;
+      transition: transform 0.2s;
+    }
+
     .actions {
       display: flex;
       gap: 0.5rem;
@@ -390,7 +414,53 @@
         </thead>
         <tbody>
           {% for device in devices %}
-          <tr class="{% if 'PV' in device.name.upper() %}pv-row{% elif device.em_group %}multi-em-row{% endif %}">
+          {% if device.is_em_group %}
+          <!-- EM Group Row (collapsed) -->
+          <tr class="multi-em-row em-group-header" data-group-id="{{ device.server_unit_id }}" onclick="toggleEmGroup(this)">
+            <td>{{ device.project_nr if device.project_nr else '-' }}</td>
+            <td>{{ device.site }}</td>
+            <td>
+              <strong>{{ device.name }}</strong> 
+              <span style="color: #27ae60; font-weight: bold;">({{ device.member_count }} enheder)</span>
+              <span class="expand-icon">▼</span>
+            </td>
+            <td colspan="3" style="text-align: center; color: #666;">Klik for at se enheder</td>
+            <td>{{ device.server_unit_id }}</td>
+            <td>{{ device.group_data_collection if device.group_data_collection else '-' }}</td>
+            <td colspan="9" style="text-align: center; color: #666;">Gruppe data</td>
+            <td class="actions">
+              <button class="btn btn-edit" onclick="event.stopPropagation(); editEmGroup(this)" data-group='{{ device|tojson }}'>Rediger</button>
+              <button class="btn btn-delete" onclick="event.stopPropagation(); deleteEmGroup(this)" data-unit-id="{{ device.server_unit_id }}"
+                data-site="{{ device.site }}">Slet</button>
+            </td>
+          </tr>
+          <!-- EM Group Members (hidden by default) -->
+          {% for member in device.members %}
+          <tr class="multi-em-row em-group-member" data-group-id="{{ device.server_unit_id }}" style="display: none; background-color: #fff3e0;">
+            <td>{{ member.project_nr if member.project_nr else '-' }}</td>
+            <td>{{ member.site }}</td>
+            <td style="padding-left: 2rem;">└─ {{ member.name }}</td>
+            <td>{{ member.ip }}</td>
+            <td>{{ member.port }}</td>
+            <td>{{ member.unit_id }}</td>
+            <td>{{ member.server_unit_id }}</td>
+            <td>{{ member.group_data_collection if member.group_data_collection else '-' }}</td>
+            <td>{{ member.registers.active_power.address if member.registers else '-' }}</td>
+            <td>{{ member.registers.active_power.offset if member.registers and member.registers.active_power.offset else '-' }}</td>
+            <td>{{ member.registers.active_power.format if member.registers else '-' }}</td>
+            <td>{{ member.registers.total_import.address if member.registers and member.registers.total_import else '-' }}</td>
+            <td>{{ member.registers.total_import.format if member.registers and member.registers.total_import else '-' }}</td>
+            <td>{{ member.registers.total_export.address if member.registers and member.registers.total_export else '-' }}</td>
+            <td>{{ member.registers.total_export.format if member.registers and member.registers.total_export else '-' }}</td>
+            <td>{{ member.reading if member.reading else (member.table if member.table else 'holding') }}</td>
+            <td class="actions">
+              <button class="btn btn-edit" onclick="editDevice(this)" data-device='{{ member|tojson }}'>Rediger</button>
+            </td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <!-- Single Device Row -->
+          <tr class="{% if 'PV' in device.name.upper() %}pv-row{% endif %}">
             <td>{{ device.project_nr if device.project_nr else '-' }}</td>
             <td>{{ device.site }}</td>
             <td>{{ device.name }}</td>
@@ -398,14 +468,14 @@
             <td>{{ device.port }}</td>
             <td>{{ device.unit_id }}</td>
             <td>{{ device.server_unit_id }}</td>
-            <td>{{ device.group_data_collection if device.em_group and device.group_data_collection else device.data_collection if device.data_collection else '-' }}</td>
-            <td>{{ device.registers.active_power.address }}</td>
-            <td>{{ device.registers.active_power.offset if device.registers.active_power.offset else '-' }}</td>
-            <td>{{ device.registers.active_power.format }}</td>
-            <td>{{ device.registers.total_import.address if device.registers.total_import else '-' }}</td>
-            <td>{{ device.registers.total_import.format if device.registers.total_import else '-' }}</td>
-            <td>{{ device.registers.total_export.address if device.registers.total_export else '-' }}</td>
-            <td>{{ device.registers.total_export.format if device.registers.total_export else '-' }}</td>
+            <td>{{ device.data_collection if device.data_collection else '-' }}</td>
+            <td>{{ device.registers.active_power.address if device.registers else '-' }}</td>
+            <td>{{ device.registers.active_power.offset if device.registers and device.registers.active_power.offset else '-' }}</td>
+            <td>{{ device.registers.active_power.format if device.registers else '-' }}</td>
+            <td>{{ device.registers.total_import.address if device.registers and device.registers.total_import else '-' }}</td>
+            <td>{{ device.registers.total_import.format if device.registers and device.registers.total_import else '-' }}</td>
+            <td>{{ device.registers.total_export.address if device.registers and device.registers.total_export else '-' }}</td>
+            <td>{{ device.registers.total_export.format if device.registers and device.registers.total_export else '-' }}</td>
             <td>{{ device.reading if device.reading else (device.table if device.table else 'holding') }}</td>
             <td class="actions">
               <button class="btn btn-edit" onclick="editDevice(this)" data-device='{{ device|tojson }}'>Rediger</button>
@@ -413,6 +483,7 @@
                 data-site="{{ device.site }}">Slet</button>
             </td>
           </tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -1496,6 +1567,57 @@
         alert('❌ Fejl:\n' + errorMessages.join('\n'));
       }
     });
+
+    // Toggle EM group members visibility
+    function toggleEmGroup(row) {
+      const groupId = row.getAttribute('data-group-id');
+      const members = document.querySelectorAll(`tr.em-group-member[data-group-id="${groupId}"]`);
+      const icon = row.querySelector('.expand-icon');
+      
+      members.forEach(member => {
+        if (member.style.display === 'none') {
+          member.style.display = '';
+          if (icon) icon.textContent = '▲';
+        } else {
+          member.style.display = 'none';
+          if (icon) icon.textContent = '▼';
+        }
+      });
+    }
+
+    // Edit EM group (opens multi EM modal with all members)
+    function editEmGroup(button) {
+      const groupData = JSON.parse(button.getAttribute('data-group'));
+      // TODO: Implement edit EM group functionality
+      alert('Rediger EM gruppe funktionalitet kommer snart');
+    }
+
+    // Delete EM group (deletes all members)
+    function deleteEmGroup(button) {
+      const unitId = button.getAttribute('data-unit-id');
+      const site = button.getAttribute('data-site');
+      
+      if (confirm(`Er du sikker på at du vil slette hele EM gruppen "${site}" (${unitId})?\n\nDette vil slette alle enheder i gruppen!`)) {
+        // Delete all devices with this server_unit_id and em_group
+        fetch('/delete_device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ server_unit_id: parseInt(unitId) })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert('✅ EM gruppe slettet!');
+            window.location.reload();
+          } else {
+            alert('❌ Fejl: ' + data.error);
+          }
+        })
+        .catch(error => {
+          alert('❌ Fejl: ' + error.message);
+        });
+      }
+    }
   </script>
 </body>
 
