@@ -426,7 +426,15 @@
             </td>
             <td colspan="3" style="text-align: center; color: #666;">Klik for at se enheder</td>
             <td>{{ device.server_unit_id }}</td>
-            <td>{{ device.group_data_collection if device.group_data_collection else '-' }}</td>
+            <td>
+              <strong style="color: #e67e22;">
+                {% if device.group_data_collection %}
+                  {{ device.group_data_collection }}
+                {% else %}
+                  <span style="color: #e74c3c;">Mangler! Klik for at redigere</span>
+                {% endif %}
+              </strong>
+            </td>
             <td colspan="9" style="text-align: center; color: #666;">Gruppe data</td>
             <td class="actions">
               <button class="btn btn-edit" onclick="event.stopPropagation(); editEmGroup(this)" data-group='{{ device|tojson }}'>Rediger</button>
@@ -444,7 +452,15 @@
             <td>{{ member.port }}</td>
             <td>{{ member.unit_id }}</td>
             <td>{{ member.server_unit_id }}</td>
-            <td>{{ member.group_data_collection if member.group_data_collection else '-' }}</td>
+            <td>
+              {% if member.group_data_collection %}
+                <span style="color: #27ae60; font-weight: 600;">{{ member.group_data_collection }}</span>
+              {% else %}
+                <span style="color: #e74c3c; font-weight: 600;">⚠️ Mangler!</span>
+              {% endif %}
+              <br>
+              <small style="color: #666;">Gruppe: {{ device.group_data_collection if device.group_data_collection else 'Ikke sat' }}</small>
+            </td>
             <td>{{ member.registers.active_power.address if member.registers else '-' }}</td>
             <td>{{ member.registers.active_power.offset if member.registers and member.registers.active_power.offset else '-' }}</td>
             <td>{{ member.registers.active_power.format if member.registers else '-' }}</td>
@@ -1585,11 +1601,47 @@
       });
     }
 
-    // Edit EM group (opens multi EM modal with all members)
+    // Edit EM group (allows editing group_data_collection for all members)
     function editEmGroup(button) {
       const groupData = JSON.parse(button.getAttribute('data-group'));
-      // TODO: Implement edit EM group functionality
-      alert('Rediger EM gruppe funktionalitet kommer snart');
+      const currentCollection = groupData.group_data_collection || '';
+      const newCollection = prompt(
+        `Rediger Group Data Collection for EM gruppen "${groupData.site}"\n\n` +
+        `Nuværende: ${currentCollection || 'Ikke sat'}\n\n` +
+        `Indtast nyt navn (eller lad stå tomt for auto-generering):`,
+        currentCollection
+      );
+      
+      if (newCollection === null) {
+        return; // User cancelled
+      }
+      
+      const collectionName = newCollection.trim();
+      
+      if (confirm(`Opdater Group Data Collection til "${collectionName || 'auto-genereret'}" for alle ${groupData.member_count} enheder i gruppen?`)) {
+        // Update all members in the group via API
+        fetch('/update_group_collection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            server_unit_id: groupData.server_unit_id,
+            em_group: groupData.em_group,
+            group_data_collection: collectionName
+          })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert(`✅ ${data.modified_count} enheder opdateret!`);
+            window.location.reload();
+          } else {
+            alert('❌ Fejl: ' + data.error);
+          }
+        })
+        .catch(error => {
+          alert('❌ Fejl: ' + error.message);
+        });
+      }
     }
 
     // Delete EM group (deletes all members)

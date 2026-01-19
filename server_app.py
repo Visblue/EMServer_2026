@@ -671,6 +671,55 @@ def update_device():
         logger.error(f"Error updating device: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/update_group_collection', methods=['POST'])
+def update_group_collection():
+    """Update group_data_collection for all members in an EM group"""
+    try:
+        data = request.get_json()
+        server_unit_id = data.get('server_unit_id')
+        em_group = data.get('em_group')
+        new_collection = data.get('group_data_collection', '').strip()
+        
+        if not server_unit_id or not em_group:
+            return jsonify({'success': False, 'error': 'Missing server_unit_id or em_group'}), 400
+        
+        # Connect to MongoDB
+        db = mongo_client[MONGO_DB]
+        devices_collection = db[MONGO_COLLECTION]
+        
+        # Find all devices in this group
+        group_devices = list(devices_collection.find({
+            'server_unit_id': int(server_unit_id),
+            'em_group': em_group
+        }))
+        
+        if not group_devices:
+            return jsonify({'success': False, 'error': 'No devices found in this group'}), 404
+        
+        # Update all devices in the group
+        result = devices_collection.update_many(
+            {'server_unit_id': int(server_unit_id), 'em_group': em_group},
+            {'$set': {'group_data_collection': new_collection}}
+        )
+        
+        logger.info(f"Updated group_data_collection for {result.modified_count} devices in group {em_group}")
+        
+        # Update the device list immediately
+        global device_list
+        new_device_list = get_config()
+        with device_list_lock:
+            device_list = new_device_list
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Updated {result.modified_count} devices',
+            'modified_count': result.modified_count
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error updating group collection: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/delete_device', methods=['POST'])
 def delete_device():
     """Delete a device from the MongoDB configuration"""
