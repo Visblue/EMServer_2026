@@ -58,7 +58,7 @@ logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 # Global constants / business rules
 # --------------------------------------------------------------------
 
-SLEEP_SECONDS_RANGE = (3, 5)  # seconds between polls per device (target interval)
+SLEEP_SECONDS_RANGE = (2, 3)  # seconds between polls per device (target interval)
 DB_SAVE_INTERVAL_SECONDS = 30
 CONFIG_RELOAD_INTERVAL_SECONDS = 120  # 5 minutes
 
@@ -541,9 +541,9 @@ class EnergyValidator:
         if last <= 1.0:
             return True, new, "første læsning"
 
-        # Detect meter reset.
+        # Detect meter reset or data deletion (new value is much lower)
         if new < last * MAX_TOTAL_RESET_THRESHOLD:
-            return True, new, "meter reset"
+            return True, new, "meter reset eller data nulstillet"
 
         diff = new - last
 
@@ -1461,6 +1461,10 @@ def reload_config_if_needed(
         # Identify states by stable ids.
         new_device_ids = {("device", st.site) for st in new_devices}
         new_group_ids = {("group", st.group_name) for st in new_groups}
+        
+        # Create lookup maps for new states by site/group_name
+        new_device_map = {st.site: st for st in new_devices}
+        new_group_map = {st.group_name: st for st in new_groups}
 
         with states_lock:
             existing_device_ids = {("device", st.site) for w in workers for st in w.device_states}
@@ -1480,6 +1484,81 @@ def reload_config_if_needed(
             if removed:
                 print(f"🗑️ Fjernet {removed} slettede devices/groups")
 
+            # Update existing devices/groups with new config (e.g., IP changes, register changes)
+            updated = 0
+            for w in workers:
+                for i, st in enumerate(w.device_states):
+                    if st.site in new_device_map:
+                        new_st = new_device_map[st.site]
+                        # Check if config has changed (IP, port, registers, etc.)
+                        old_cfg = st.device_cfg
+                        new_cfg = new_st.device_cfg
+                        # Compare key fields that affect polling
+                        config_changed = (
+                            old_cfg.get("ip") != new_cfg.get("ip") or
+                            old_cfg.get("port") != new_cfg.get("port") or
+                            old_cfg.get("unit_id") != new_cfg.get("unit_id") or
+                            old_cfg.get("reading") != new_cfg.get("reading") or
+                            old_cfg.get("table") != new_cfg.get("table")
+                        )
+                        # Compare registers (simplified - check if active_power address changed)
+                        if not config_changed and "registers" in old_cfg and "registers" in new_cfg:
+                            old_regs = old_cfg.get("registers", {})
+                            new_regs = new_cfg.get("registers", {})
+                            if old_regs.get("active_power", {}).get("address") != new_regs.get("active_power", {}).get("address"):
+                                config_changed = True
+                        
+                        if config_changed:
+                            # Close old connections to force reconnection with new settings
+                            if st.device_reader:
+                                st.device_reader.close()
+                            if st.server_reader:
+                                st.server_reader.close()
+                            # Preserve runtime state (last_import, last_export, etc.) from old state
+                            new_st.last_import = st.last_import
+                            new_st.last_export = st.last_export
+                            new_st.last_db_save = st.last_db_save
+                            new_st.run_count = st.run_count
+                            # Update state with new config
+                            w.device_states[i] = new_st
+                            updated += 1
+                
+                for i, st in enumerate(w.group_states):
+                    if st.group_name in new_group_map:
+                        new_st = new_group_map[st.group_name]
+                        # Check if config has changed (members count, IPs, registers, etc.)
+                        old_member_cfgs = [m.cfg for m in st.members]
+                        new_member_cfgs = [m.cfg for m in new_st.members]
+                        
+                        # Compare member configs (simplified - check count and key fields)
+                        members_changed = len(old_member_cfgs) != len(new_member_cfgs)
+                        if not members_changed:
+                            for old_m, new_m in zip(old_member_cfgs, new_member_cfgs):
+                                if (old_m.get("ip") != new_m.get("ip") or
+                                    old_m.get("port") != new_m.get("port") or
+                                    old_m.get("unit_id") != new_m.get("unit_id")):
+                                    members_changed = True
+                                    break
+                        
+                        if members_changed:
+                            # Close old connections
+                            if st.server_reader:
+                                st.server_reader.close()
+                            for m in st.members:
+                                if m.reader:
+                                    m.reader.close()
+                            # Preserve runtime state from old state
+                            new_st.last_import = st.last_import
+                            new_st.last_export = st.last_export
+                            new_st.last_db_save = st.last_db_save
+                            new_st.run_count = st.run_count
+                            # Update state with new config
+                            w.group_states[i] = new_st
+                            updated += 1
+
+            if updated:
+                print(f"🔄 Opdateret {updated} eksisterende devices/groups med nye indstillinger")
+
             # Add new.
             added = 0
             for st in new_devices:
@@ -1497,7 +1576,7 @@ def reload_config_if_needed(
             if added:
                 print(f"✅ Tilføjet {added} nye devices/groups")
 
-            if added or removed:
+            if added or removed or updated:
                 total = sum(len(w.device_states) + len(w.group_states) for w in workers)
                 print(f"📊 Total states nu: {total}")
             else:
