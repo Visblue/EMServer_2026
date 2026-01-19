@@ -439,11 +439,11 @@ def add_device():
         if 'em_group' not in device_data:
             device_data['em_group'] = None
         
-        # Auto-generate group_data_collection if not provided for EM groups
+        # Use group_data_collection PRECISELY as provided, or auto-generate if empty
         if has_em_group:
             group_data_collection = device_data.get('group_data_collection', '').strip()
             if not group_data_collection or group_data_collection.lower() == 'undefined':
-                # Auto-generate as project_nr_Device_Name
+                # Auto-generate as project_nr_Device_Name only if completely empty
                 project_nr = str(device_data.get('project_nr', '')).strip()
                 device_name = str(device_data.get('em_group', '')).strip()
                 if not device_name:
@@ -458,7 +458,9 @@ def add_device():
                     device_data['group_data_collection'] = device_name_clean
                 logger.info(f"Auto-generated group_data_collection: {device_data['group_data_collection']}")
             else:
+                # Use the EXACT value provided by user - no modifications
                 device_data['group_data_collection'] = group_data_collection
+                logger.info(f"Using provided group_data_collection: {group_data_collection}")
 
         # Validate server_unit_id range (1-200, matching NUM_SLAVES)
         try:
@@ -542,11 +544,11 @@ def update_device():
         # Check if this is an EM group device
         has_em_group = bool(device_data.get('em_group') and str(device_data.get('em_group')).strip())
         
-        # Auto-generate group_data_collection if not provided for EM groups
+        # Use group_data_collection PRECISELY as provided, or auto-generate if empty
         if has_em_group:
             group_data_collection = device_data.get('group_data_collection', '').strip()
             if not group_data_collection or group_data_collection.lower() == 'undefined':
-                # Auto-generate as project_nr_Device_Name
+                # Auto-generate as project_nr_Device_Name only if completely empty
                 project_nr = str(device_data.get('project_nr', '')).strip()
                 device_name = str(device_data.get('em_group', '')).strip()
                 if not device_name:
@@ -561,7 +563,9 @@ def update_device():
                     device_data['group_data_collection'] = device_name_clean
                 logger.info(f"Auto-generated group_data_collection in update: {device_data['group_data_collection']}")
             else:
+                # Use the EXACT value provided by user - no modifications
                 device_data['group_data_collection'] = group_data_collection
+                logger.info(f"Using provided group_data_collection in update: {group_data_collection}")
 
         # Validate server_unit_id range (1-200, matching NUM_SLAVES)
         try:

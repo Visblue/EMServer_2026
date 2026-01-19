@@ -1480,15 +1480,17 @@ class StateFactory:
             if not group_devices:
                 continue
 
-            # Use group_data_collection if available, otherwise auto-generate as project_nr_Device_Navn
+            # Use group_data_collection PRECISELY as specified - do not auto-generate or modify
             # Individual EM devices in a group do NOT need their own data_collection.
             first = group_devices[0]
-            # Get group_data_collection, ensuring it's not None, empty, or "undefined"
+            # Get group_data_collection - use it PRECISELY as stored in database
             gdc = first.get("group_data_collection")
             if gdc and str(gdc).strip() and str(gdc).strip().lower() != "undefined":
+                # Use the EXACT value from database - no modifications
                 group_collection_name = str(gdc).strip()
             else:
-                # Auto-generate collection name as project_nr_Device_Navn
+                # Only auto-generate if completely missing (should not happen if backend validation works)
+                # This is a fallback only
                 project_nr_raw = first.get("project_nr")
                 project_nr = str(project_nr_raw).strip() if project_nr_raw is not None else ""
                 device_name = group_name.replace(" ", "_") if group_name else "unknown_group"
@@ -1498,6 +1500,8 @@ class StateFactory:
                     group_collection_name = f"{project_nr}_{device_name}"
                 else:
                     group_collection_name = device_name
+                # Log warning if we had to auto-generate (should not happen)
+                print(f"⚠️ Warning: Auto-generated collection name for EM group '{group_name}': {group_collection_name}")
             group_device_cfg = {
                 "site": group_name,
                 "project_nr": first.get("project_nr", ""),
