@@ -671,19 +671,27 @@ def update_device():
         logger.error(f"Error updating device: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/update_group_collection', methods=['POST'])
+@app.route('/update_group_collection', methods=['POST', 'GET'])
 def update_group_collection():
     """Update group_data_collection for all members in an EM group"""
+    if request.method == 'GET':
+        # Test endpoint to verify it's accessible
+        return jsonify({'success': True, 'message': 'Endpoint is accessible'}), 200
+    
     try:
         data = request.get_json()
         if not data:
+            logger.warning("update_group_collection: No JSON data received")
             return jsonify({'success': False, 'error': 'No JSON data received'}), 400
+        
+        logger.info(f"update_group_collection received: {data}")
         
         server_unit_id = data.get('server_unit_id')
         em_group = data.get('em_group')
         new_collection = data.get('group_data_collection', '').strip()
         
         if not server_unit_id or not em_group:
+            logger.warning(f"update_group_collection: Missing server_unit_id or em_group. server_unit_id={server_unit_id}, em_group={em_group}")
             return jsonify({'success': False, 'error': 'Missing server_unit_id or em_group'}), 400
         
         # Ensure server_unit_id is an integer

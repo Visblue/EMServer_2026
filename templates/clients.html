@@ -430,7 +430,7 @@
             <td>
               <strong>{{ device.name }}</strong> 
               <span style="color: #27ae60; font-weight: bold;">({{ device.member_count }} enheder)</span>
-              <span class="expand-icon" onclick="toggleEmGroup(this.closest('tr'))" style="cursor: pointer; margin-left: 0.5rem;">▼</span>
+              <span class="expand-icon" onclick="event.stopPropagation(); toggleEmGroup(this.closest('tr')); return false;" style="cursor: pointer; margin-left: 0.5rem; user-select: none;">▼</span>
             </td>
             <td colspan="3" style="text-align: center; color: #666;">Klik ▼ for at se enheder</td>
             <td>{{ device.server_unit_id }}</td>
@@ -1608,19 +1608,59 @@
 
     // Toggle EM group members visibility
     function toggleEmGroup(row) {
+      console.log('toggleEmGroup called', row);
+      if (!row) {
+        console.error('toggleEmGroup: row is null');
+        return;
+      }
+      
       const groupId = row.getAttribute('data-group-id');
+      console.log('Group ID:', groupId);
+      
+      if (!groupId) {
+        console.error('toggleEmGroup: No data-group-id found');
+        return;
+      }
+      
+      // Find all members with this group-id
       const members = document.querySelectorAll(`tr.em-group-member[data-group-id="${groupId}"]`);
+      console.log('Found members:', members.length);
+      
+      if (members.length === 0) {
+        console.warn('No members found for group:', groupId);
+        return;
+      }
+      
       const icon = row.querySelector('.expand-icon');
       
-      members.forEach(member => {
-        if (member.style.display === 'none') {
-          member.style.display = '';
-          if (icon) icon.textContent = '▲';
+      // Check if first member is hidden (using both style.display and computed style)
+      const firstMember = members[0];
+      const isCurrentlyHidden = firstMember.style.display === 'none' || 
+                                window.getComputedStyle(firstMember).display === 'none';
+      
+      console.log('Is currently hidden:', isCurrentlyHidden);
+      
+      // Toggle all members
+      members.forEach((member, index) => {
+        if (isCurrentlyHidden) {
+          // Show member - remove inline style completely
+          member.removeAttribute('style');
+          // Re-add background color but not display:none
+          member.style.backgroundColor = '#fff3e0';
+          console.log(`Showing member ${index}:`, member);
         } else {
+          // Hide member
           member.style.display = 'none';
-          if (icon) icon.textContent = '▼';
+          member.style.backgroundColor = '#fff3e0';
+          console.log(`Hiding member ${index}:`, member);
         }
       });
+      
+      // Update icon
+      if (icon) {
+        icon.textContent = isCurrentlyHidden ? '▲' : '▼';
+        console.log('Updated icon to:', icon.textContent);
+      }
     }
 
     // Inline edit Group Data Collection directly in the table
@@ -1689,14 +1729,20 @@
       const save = () => {
         const newValue = input.value.trim();
         if (confirm(`Opdater Group Data Collection til "${newValue || 'auto-genereret'}" for alle enheder i gruppen "${emGroupStr}"?`)) {
+          const requestData = {
+            server_unit_id: parseInt(serverUnitId),
+            em_group: emGroupStr,
+            group_data_collection: newValue
+          };
+          console.log('Sending request to /update_group_collection:', requestData);
+          
           fetch('/update_group_collection', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              server_unit_id: parseInt(serverUnitId),
-              em_group: emGroupStr,
-              group_data_collection: newValue
-            })
+            headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(requestData)
           })
           .then(response => {
             // Check if response is ok and content-type is JSON
