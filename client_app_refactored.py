@@ -72,11 +72,6 @@ MAX_TOTAL_RESET_THRESHOLD = 0.5  # meter reset if new < 50% of old
 BACKOFF_MIN_SECONDS = 60
 BACKOFF_MAX_SECONDS = 360
 
-# Optional per-site debug (to trace specific problematic sites end-to-end).
-# Her bruger vi kun server_unit_id for at skelne mellem EM_1 (35) og PV_1 (120) på Bakkegården.
-DEBUG_SITES: set[str] = set()
-DEBUG_SERVER_UNIT_IDS: set[int] = {35}
-
 # Modbus register addresses used on the "server" side.
 SERVER_REGISTERS = {
     "active_power": 19026,
@@ -921,13 +916,6 @@ class DevicePoller:
     def poll_once(self, state: DeviceState) -> None:
         now = time.time()
         if now < state.backoff_until:
-            # Debug: vis at vi skipper polls for bestemte sites (fx Bakkegården) pga. backoff.
-            if state.site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
-                try:
-                    remaining = max(0.0, state.backoff_until - now)
-                    print(f"[DEBUG-BKG] Skipper poll for {state.site} (server_unit_id={state.server_unit_id}) pga. backoff, {remaining:.1f}s tilbage")
-                except Exception:
-                    pass
             return
 
         site = state.site
@@ -968,12 +956,6 @@ class DevicePoller:
 
         # Read values.
         try:
-            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
-                try:
-                    print(f"[DEBUG-BKG] Starter read for {site} (server_unit_id={state.server_unit_id}, interval={actual_interval:.2f}s)")
-                except Exception:
-                    pass
-
             ap, total_imp, total_exp, meta = self._energy_reader.read(
                 state.device_reader,
                 dev,
@@ -983,17 +965,6 @@ class DevicePoller:
                 first_read=state.first_read,
             )
             state.first_read = False
-
-            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
-                try:
-                    print(
-                        f"[DEBUG-BKG] Read OK for {site}: "
-                        f"AP={ap:.2f}W, Total_Imp={total_imp:.3f}Wh, Total_Exp={total_exp:.3f}Wh, "
-                        f"flags: AP_invalid={meta.active_power_invalid}, "
-                        f"Imp_invalid={meta.import_invalid}, Exp_invalid={meta.export_invalid}"
-                    )
-                except Exception:
-                    pass
         except ModbusException as e:
             # Mere detaljeret info om hvor fejlen opstod (hjælper ved fx enkelte sites som Bakkegården).
             dev_ip = dev.get("ip", "unknown")
@@ -1019,15 +990,6 @@ class DevicePoller:
         # Write values to server.
         try:
             assert state.server_reader is not None
-            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
-                try:
-                    print(
-                        f"[DEBUG-BKG] Skriver til server for {site} (server_unit_id={state.server_unit_id}): "
-                        f"AP={ap:.2f}W, Total_Imp={total_imp:.3f}Wh, Total_Exp={total_exp:.3f}Wh"
-                    )
-                except Exception:
-                    pass
-
             safe_write_float32(state.server_reader, ap, "active_power", state.server_unit_id)
             if abs(total_imp - state.last_import) > FLOAT_TOLERANCE_WH:
                 safe_write_float32(state.server_reader, total_imp, "total_import", state.server_unit_id)
@@ -1654,22 +1616,24 @@ def reload_config_if_needed(
         new_groups = factory.build_group_states(em_groups, servers)
 
         # Identify states by stable ids.
-        new_device_ids = {("device", st.site) for st in new_devices}
+        # VIGTIGT: Brug både site og server_unit_id for devices for at undgå
+        # at blande flere enheder med samme site (fx Bakkegården EM_1 og PV_1) sammen.
+        new_device_ids = {("device", st.site, st.server_unit_id) for st in new_devices}
         new_group_ids = {("group", st.group_name) for st in new_groups}
         
-        # Create lookup maps for new states by site/group_name
-        new_device_map = {st.site: st for st in new_devices}
+        # Create lookup maps for new states by (site, server_unit_id)/group_name
+        new_device_map = {(st.site, st.server_unit_id): st for st in new_devices}
         new_group_map = {st.group_name: st for st in new_groups}
 
         with states_lock:
-            existing_device_ids = {("device", st.site) for w in workers for st in w.device_states}
+            existing_device_ids = {("device", st.site, st.server_unit_id) for w in workers for st in w.device_states}
             existing_group_ids = {("group", st.group_name) for w in workers for st in w.group_states}
 
             # Remove deleted.
             removed = 0
             for w in workers:
                 before = len(w.device_states)
-                w.device_states = [st for st in w.device_states if ("device", st.site) in new_device_ids]
+                w.device_states = [st for st in w.device_states if ("device", st.site, st.server_unit_id) in new_device_ids]
                 removed += before - len(w.device_states)
 
                 before = len(w.group_states)
@@ -1683,8 +1647,9 @@ def reload_config_if_needed(
             updated = 0
             for w in workers:
                 for i, st in enumerate(w.device_states):
-                    if st.site in new_device_map:
-                        new_st = new_device_map[st.site]
+                    key = (st.site, st.server_unit_id)
+                    if key in new_device_map:
+                        new_st = new_device_map[key]
                         # Check if config has changed (IP, port, registers, etc.)
                         old_cfg = st.device_cfg
                         new_cfg = new_st.device_cfg
@@ -1757,7 +1722,7 @@ def reload_config_if_needed(
             # Add new.
             added = 0
             for st in new_devices:
-                if ("device", st.site) not in existing_device_ids:
+                if ("device", st.site, st.server_unit_id) not in existing_device_ids:
                     min_worker = min(workers, key=lambda ww: len(ww.device_states) + len(ww.group_states))
                     min_worker.device_states.append(st)
                     added += 1
