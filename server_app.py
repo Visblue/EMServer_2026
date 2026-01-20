@@ -497,10 +497,10 @@ def add_device():
         
         # Use group_data_collection PRECISELY as provided, or auto-generate if empty
         if has_em_group:
+            # Auto-generate as project_nr_device_name (using DEVICE name, NOT em_group name)
+            # Example: project_nr=10340, device name=EM_1 → group_data_collection=10340_EM_1
             project_nr = str(device_data.get('project_nr', '')).strip()
-            device_name = str(device_data.get('em_group', '')).strip()
-            if not device_name:
-                device_name = str(device_data.get('name', '')).strip()
+            device_name = str(device_data.get('name', '')).strip()  # Use device name, NOT em_group
             device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
             if project_nr:
                 device_data['group_data_collection'] = f"{project_nr}_{device_name_clean}"
@@ -630,11 +630,10 @@ def update_device():
         if has_em_group:
             group_data_collection = device_data.get('group_data_collection', '').strip()
             if not group_data_collection or group_data_collection.lower() == 'undefined':
-                # Auto-generate as project_nr_Device_Name only if completely empty
+                # Auto-generate as project_nr_device_name (using DEVICE name, NOT em_group name)
+                # Example: project_nr=10340, device name=EM_1 → group_data_collection=10340_EM_1
                 project_nr = str(device_data.get('project_nr', '')).strip()
-                device_name = str(device_data.get('em_group', '')).strip()
-                if not device_name:
-                    device_name = str(device_data.get('name', '')).strip()
+                device_name = str(device_data.get('name', '')).strip()  # Use device name, NOT em_group
                 
                 # Clean device name: remove special characters, keep only alphanumeric and underscore
                 device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))

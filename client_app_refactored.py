@@ -531,13 +531,28 @@ class EnergyValidator:
     """Business rules for validating totals."""
 
     def validate_total(self, new: float, last: float, value_name: str, *, first_read: bool) -> tuple[bool, float, str]:
-        """Return (ok, validated_value, reason)."""
+        """Return (ok, validated_value, reason).
+        
+        Validates energy totals to detect spikes, drops, and anomalies while handling
+        special cases like meter resets and long disconnections.
+        
+        Args:
+            new: New total value read from device
+            last: Last valid total value
+            value_name: Name for error messages (e.g., "Import", "Export")
+            first_read: True if first read after restart or long disconnection (>1h)
+            
+        Returns:
+            (is_valid, validated_value, reason_message)
+        """
 
         if new < MIN_TOTAL_VALUE:
             return False, last, f"{value_name} negativ ({new})"
 
         if first_read:
-            return True, new, "første læsning efter restart"
+            # Accept any value after restart or long disconnection (>1 hour)
+            # This prevents false spike detection when device has been offline for hours/days
+            return True, new, "første læsning efter restart eller lang afbrydelse"
 
         if last <= 1.0:
             return True, new, "første læsning"
@@ -978,6 +993,14 @@ class DevicePoller:
                 return
 
         # Read values.
+        # Determine if this should be treated as a "first read" to avoid false spike detection
+        # after long periods without connection (e.g., device offline for days)
+        time_since_last_run = (now - state.last_run_at) if state.last_run_at > 0 else float('inf')
+        baseline_read = (
+            state.first_read or 
+            time_since_last_run > 3600.0  # More than 1 hour since last successful read
+        )
+        
         try:
             ap, total_imp, total_exp, meta = self._energy_reader.read(
                 state.device_reader,
@@ -1027,17 +1050,27 @@ class DevicePoller:
 
         # Persist to DB periodically.
         if now - state.last_db_save >= DB_SAVE_INTERVAL_SECONDS:
+            # IMPORTANT: Pass the ORIGINAL last_import/last_export to save_sample
+            # so it can calculate the correct diffs (Imported_Wh, Exported_Wh)
+            # save_sample returns the new values to use as next baseline
             state.last_import, state.last_export = self._repo.save_sample(
                 dev,
                 state.collection,
-                state.last_import,
-                state.last_export,
+                state.last_import,  # Original value for diff calculation
+                state.last_export,  # Original value for diff calculation
                 ap,
-                total_imp,
-                total_exp,
+                total_imp,   # New value (validated)
+                total_exp,   # New value (validated)
                 meta,
             )
             state.last_db_save = now
+        else:
+            # If not saving to DB yet, update state.last_import/last_export in memory
+            # ONLY if validation passed (to use as baseline for next comparison)
+            if not meta.import_invalid:
+                state.last_import = total_imp
+            if not meta.export_invalid:
+                state.last_export = total_exp
 
         # Success path.
         state.consecutive_errors = 0
@@ -1116,12 +1149,21 @@ class EmGroupPoller:
         
         Uses higher threshold for EM groups since we're summing values from multiple meters,
         which can result in larger differences.
+        
+        Args:
+            new: New total value (sum of all group members)
+            last: Last valid total value
+            value_name: Name for error messages
+            first_read: True if first read after restart or long disconnection (>1h)
+            max_diff: Maximum reasonable difference in Wh (higher for EM groups)
         """
         if new < MIN_TOTAL_VALUE:
             return False, last, f"{value_name} negativ ({new})"
 
         if first_read:
-            return True, new, "første læsning efter restart"
+            # Accept any value after restart or long disconnection
+            # This prevents false spike detection when devices have been offline for hours/days
+            return True, new, "første læsning efter restart eller lang afbrydelse"
 
         if last <= 1.0:
             return True, new, "første læsning"
@@ -1135,7 +1177,7 @@ class EmGroupPoller:
         if diff < -FLOAT_TOLERANCE_WH:
             return False, last, f"{value_name} faldt ({last} -> {new})"
 
-        # Early phase tolerance.
+        # Early phase tolerance (first few readings after installation).
         if last < 10000 and diff > max_diff:
             extended_limit = max_diff * 10
             if diff > extended_limit:
@@ -1395,17 +1437,27 @@ class EmGroupPoller:
                 "name": state.group_name or "",
                 "data_collection": state.collection_name,  # Include collection name for reference
             }
+            # IMPORTANT: Pass the ORIGINAL last_import/last_export to save_sample
+            # so it can calculate the correct diffs (Imported_Wh, Exported_Wh)
+            # save_sample returns the new values to use as next baseline
             state.last_import, state.last_export = self._repo.save_sample(
                 group_device_cfg,
                 state.collection,
-                state.last_import,
-                state.last_export,
+                state.last_import,  # Original value for diff calculation
+                state.last_export,  # Original value for diff calculation
                 total_ap,
-                total_imp_sum,
-                total_exp_sum,
+                total_imp_sum,   # New value (validated)
+                total_exp_sum,   # New value (validated)
                 group_meta,
             )
             state.last_db_save = now
+        else:
+            # If not saving to DB yet, update state.last_import/last_export in memory
+            # ONLY if validation passed (to use as baseline for next comparison)
+            if not group_meta.import_invalid:
+                state.last_import = total_imp_sum
+            if not group_meta.export_invalid:
+                state.last_export = total_exp_sum
 
         # Success path scheduling.
         state.backoff_until = 0.0
@@ -1572,9 +1624,10 @@ class StateFactory:
             else:
                 # Only auto-generate if completely missing (should not happen if backend validation works)
                 # This is a fallback only
+                # Use FIRST DEVICE's name (e.g., "EM_1"), NOT the group name
                 project_nr_raw = first.get("project_nr")
                 project_nr = str(project_nr_raw).strip() if project_nr_raw is not None else ""
-                device_name = group_name.replace(" ", "_") if group_name else "unknown_group"
+                device_name = first.get("name", "unknown_device").replace(" ", "_")
                 # Clean device name: remove special characters, keep only alphanumeric and underscore
                 device_name = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name)
                 if project_nr:
@@ -1582,7 +1635,7 @@ class StateFactory:
                 else:
                     group_collection_name = device_name
                 # Log warning if we had to auto-generate (should not happen)
-                print(f"⚠️ Warning: Auto-generated collection name for EM group '{group_name}': {group_collection_name}")
+                print(f"⚠️ Warning: Auto-generated collection name for EM group '{group_name}' using first device name: {group_collection_name}")
             group_device_cfg = {
                 "site": group_name,
                 "project_nr": first.get("project_nr", ""),
