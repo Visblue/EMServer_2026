@@ -766,9 +766,28 @@ class MongoEnergyRepository:
             total_import = last_import
         if total_export is None:
             total_export = last_export
+        # Detect baseline-reads (første læsning efter restart/lang pause) via validatorens reasons.
+        # For disse vil vi IKKE registrere et stort forbrugshul som én spike.
+        import_reason_l = (meta.import_reason or "").lower()
+        export_reason_l = (meta.export_reason or "").lower()
+        is_import_baseline = import_reason_l.startswith("første læsning")
+        is_export_baseline = export_reason_l.startswith("første læsning")
 
-        imp_diff = max(0, total_import - last_import) if total_import is not None else 0
-        exp_diff = max(0, total_export - last_export) if total_export is not None else 0
+        if total_import is not None:
+            if is_import_baseline:
+                imp_diff = 0
+            else:
+                imp_diff = max(0, total_import - last_import)
+        else:
+            imp_diff = 0
+
+        if total_export is not None:
+            if is_export_baseline:
+                exp_diff = 0
+            else:
+                exp_diff = max(0, total_export - last_export)
+        else:
+            exp_diff = 0
 
         # Ensure all values are not None before saving
         project_nr = device_cfg.get("project_nr") or ""
@@ -928,6 +947,10 @@ class DevicePoller:
         actual_interval = min(raw_interval, 10.0)  # Cap at 10s for display purposes
         target_interval = random.randint(*SLEEP_SECONDS_RANGE)  # Use consistent target for energy calc
 
+        # Treat first read AND lange pauser som baseline, så vi undgår kæmpe spikes efter nedetid.
+        time_since_last_run = (now - state.last_run_at) if state.last_run_at > 0 else float("inf")
+        baseline_read = state.first_read or time_since_last_run > 3600.0  # > 1 time siden sidste succes
+
         # Ensure device connection.
         if not state.device_reader or not state.device_reader.is_open():
             tcp = connect_modbus(dev["ip"], dev["port"])
@@ -962,7 +985,7 @@ class DevicePoller:
                 state.last_import,
                 state.last_export,
                 actual_interval,
-                first_read=state.first_read,
+                first_read=baseline_read,
             )
             state.first_read = False
         except ModbusException as e:
