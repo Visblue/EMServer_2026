@@ -663,6 +663,15 @@ class EnergyReader:
 
         # If only AP is available, derive totals by integrating power over time.
         if has_ap and not (has_imp or has_exp):
+            # Info: some devices (fx Bakkegården) har kun active_power-register.
+            # I disse tilfælde beregner vi selv total import/export som integreret energi.
+            if first_read:
+                site = device_cfg.get("site", "unknown")
+                try:
+                    print(f"[INFO] {site}: ingen total_import/total_export registre – beregner totals ud fra active_power")
+                except Exception:
+                    pass
+
             effective_interval = max(float(interval_seconds), 1.0)
             energy_wh = (active_power * effective_interval) / 3600.0
             if active_power > 0:
@@ -957,8 +966,13 @@ class DevicePoller:
             )
             state.first_read = False
         except ModbusException as e:
-            cat, sev = categorize_message(f"Modbus fejl: {e}")
-            self._reporter.record(ErrorEvent(site=site, message=f"Modbus fejl: {e}", category=cat, severity=sev))
+            # Mere detaljeret info om hvor fejlen opstod (hjælper ved fx enkelte sites som Bakkegården).
+            dev_ip = dev.get("ip", "unknown")
+            dev_port = dev.get("port", "unknown")
+            dev_unit = dev.get("unit_id", "unknown")
+            msg = f"Modbus fejl på device {site} ({dev_ip}:{dev_port}, unit {dev_unit}): {e}"
+            cat, sev = categorize_message(msg)
+            self._reporter.record(ErrorEvent(site=site, message=msg, category=cat, severity=sev))
             state.consecutive_errors += 1
             if state.device_reader:
                 state.device_reader.close()
@@ -966,8 +980,9 @@ class DevicePoller:
             self._apply_error_backoff(state)
             return
         except Exception as e:
-            cat, sev = categorize_message(f"Uventet fejl i read: {e}")
-            self._reporter.record(ErrorEvent(site=site, message=f"Uventet fejl i read: {e}", category=cat, severity=sev))
+            msg = f"Uventet fejl i read for {site}: {e}"
+            cat, sev = categorize_message(msg)
+            self._reporter.record(ErrorEvent(site=site, message=msg, category=cat, severity=sev))
             state.consecutive_errors += 1
             self._apply_error_backoff(state)
             return
@@ -1182,16 +1197,22 @@ class EmGroupPoller:
                     first_read=True,  # Always treat as first read for members - we only validate summed totals
                 )
             except ModbusException as e:
-                cat, sev = categorize_message(f"Modbus fejl: {e}")
-                self._reporter.record(ErrorEvent(site=f"{site}/{em_site}", message=f"Modbus fejl: {e}", category=cat, severity=sev))
+                # Mere detaljeret fejltekst for EM-gruppe-medlemmer.
+                dev_ip = em_cfg.get("ip", "unknown")
+                dev_port = em_cfg.get("port", "unknown")
+                dev_unit = em_cfg.get("unit_id", "unknown")
+                msg = f"Modbus fejl på EM-device {site}/{em_site} ({dev_ip}:{dev_port}, unit {dev_unit}): {e}"
+                cat, sev = categorize_message(msg)
+                self._reporter.record(ErrorEvent(site=f"{site}/{em_site}", message=msg, category=cat, severity=sev))
                 if member.reader:
                     member.reader.close()
                 member.reader = None
                 self._apply_member_backoff(member, prefix=f"{site}/{em_site}")
                 continue
             except Exception as e:
-                cat, sev = categorize_message(f"Uventet fejl i read: {e}")
-                self._reporter.record(ErrorEvent(site=f"{site}/{em_site}", message=f"Uventet fejl i read: {e}", category=cat, severity=sev))
+                msg = f"Uventet fejl i read for EM-device {site}/{em_site}: {e}"
+                cat, sev = categorize_message(msg)
+                self._reporter.record(ErrorEvent(site=f"{site}/{em_site}", message=msg, category=cat, severity=sev))
                 self._apply_member_backoff(member, prefix=f"{site}/{em_site}")
                 continue
 
