@@ -461,7 +461,7 @@
             <td class="actions" onclick="event.stopPropagation();">
               <button class="btn btn-edit" onclick="editEmGroup(this)" data-group='{{ device|tojson }}'>Rediger</button>
               <button class="btn btn-delete" onclick="deleteEmGroup(this)" data-unit-id="{{ device.server_unit_id }}"
-                data-site="{{ device.site }}">Slet</button>
+                data-site="{{ device.site }}" data-em-group="{{ device.em_group }}">Slet</button>
             </td>
           </tr>
           <!-- EM Group Members (hidden by default) -->
@@ -518,7 +518,7 @@
             <td class="actions">
               <button class="btn btn-edit" onclick="editDevice(this)" data-device='{{ device|tojson }}'>Rediger</button>
               <button class="btn btn-delete" onclick="deleteDevice(this)" data-unit-id="{{ device.server_unit_id }}"
-                data-site="{{ device.site }}">Slet</button>
+                data-site="{{ device.site }}" data-id="{{ device._id }}">Slet</button>
             </td>
           </tr>
           {% endif %}
@@ -542,6 +542,7 @@
       </div>
       <form id="deviceForm">
         <input type="hidden" id="originalServerUnitId" value="">
+        <input type="hidden" id="deviceId" value="">
         <input type="hidden" id="originalEmGroup" value="">
 
         <div class="form-group">
@@ -556,7 +557,64 @@
 
         <div class="form-group">
           <label for="name">Device Navn *</label>
-          <input type="text" id="name" name="name" required placeholder="f.eks. Siemens">
+          <select id="name" name="name" required>
+            <option value="">-- Vælg --</option>
+            <option value="EM_1">EM_1</option>
+            <option value="EM_2">EM_2</option>
+            <option value="EM_3">EM_3</option>
+            <option value="EM_4">EM_4</option>
+            <option value="EM_5">EM_5</option>
+            <option value="PV_1">PV_1</option>
+            <option value="PV_2">PV_2</option>
+            <option value="PV_3">PV_3</option>
+            <option value="PV_4">PV_4</option>
+            <option value="PV_5">PV_5</option>
+            <option value="PV_6">PV_6</option>
+            <option value="PV_7">PV_7</option>
+            <option value="PV_8">PV_8</option>
+            <option value="PV_9">PV_9</option>
+            <option value="PV_10">PV_10</option>
+            <option value="Building_1">Building_1</option>
+            <option value="Building_2">Building_2</option>
+            <option value="Building_3">Building_3</option>
+            <option value="Building_4">Building_4</option>
+            <option value="Building_5">Building_5</option>
+            <option value="Building_6">Building_6</option>
+            <option value="Building_7">Building_7</option>
+            <option value="Building_8">Building_8</option>
+            <option value="Building_9">Building_9</option>
+            <option value="Building_10">Building_10</option>
+            <option value="Chargers_1">Chargers_1</option>
+            <option value="Chargers_2">Chargers_2</option>
+            <option value="Chargers_3">Chargers_3</option>
+            <option value="Chargers_4">Chargers_4</option>
+            <option value="Chargers_5">Chargers_5</option>
+            <option value="Chargers_6">Chargers_6</option>
+            <option value="Chargers_7">Chargers_7</option>
+            <option value="Chargers_8">Chargers_8</option>
+            <option value="Chargers_9">Chargers_9</option>
+            <option value="Chargers_10">Chargers_10</option>
+            <option value="Heat_1">Heat_1</option>
+            <option value="Heat_2">Heat_2</option>
+            <option value="Heat_3">Heat_3</option>
+            <option value="Heat_4">Heat_4</option>
+            <option value="Heat_5">Heat_5</option>
+            <option value="Heat_6">Heat_6</option>
+            <option value="Heat_7">Heat_7</option>
+            <option value="Heat_8">Heat_8</option>
+            <option value="Heat_9">Heat_9</option>
+            <option value="Heat_10">Heat_10</option>
+            <option value="Wind_1">Wind_1</option>
+            <option value="Wind_2">Wind_2</option>
+            <option value="Wind_3">Wind_3</option>
+            <option value="Wind_4">Wind_4</option>
+            <option value="Wind_5">Wind_5</option>
+            <option value="Wind_6">Wind_6</option>
+            <option value="Wind_7">Wind_7</option>
+            <option value="Wind_8">Wind_8</option>
+            <option value="Wind_9">Wind_9</option>
+            <option value="Wind_10">Wind_10</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -592,8 +650,7 @@
         </div>
 
         <div class="form-group">
-          <label for="data_collection">Data Collection Navn *</label>
-          <input type="text" id="data_collection" name="data_collection" required placeholder="f.eks. Solbjerg_em_data">
+          <!-- Data Collection Navn fjernet, genereres automatisk -->
         </div>
 
         <div class="form-group" style="background: #e8f5e9; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
@@ -765,6 +822,69 @@
           </div>
 
           <div class="form-group">
+            <label for="multi_group_device_name">Group Device Name</label>
+            <select id="multi_group_device_name" name="multi_group_device_name" required>
+              <option value="">-- Vælg --</option>
+              <option value="EM_1">EM_1</option>
+              <option value="EM_2">EM_2</option>
+              <option value="EM_3">EM_3</option>
+              <option value="EM_4">EM_4</option>
+              <option value="EM_5">EM_5</option>
+              <option value="PV_1">PV_1</option>
+              <option value="PV_2">PV_2</option>
+              <option value="PV_3">PV_3</option>
+              <option value="PV_4">PV_4</option>
+              <option value="PV_5">PV_5</option>
+              <option value="PV_6">PV_6</option>
+              <option value="PV_7">PV_7</option>
+              <option value="PV_8">PV_8</option>
+              <option value="PV_9">PV_9</option>
+              <option value="PV_10">PV_10</option>
+              <option value="Building_1">Building_1</option>
+              <option value="Building_2">Building_2</option>
+              <option value="Building_3">Building_3</option>
+              <option value="Building_4">Building_4</option>
+              <option value="Building_5">Building_5</option>
+              <option value="Building_6">Building_6</option>
+              <option value="Building_7">Building_7</option>
+              <option value="Building_8">Building_8</option>
+              <option value="Building_9">Building_9</option>
+              <option value="Building_10">Building_10</option>
+              <option value="Chargers_1">Chargers_1</option>
+              <option value="Chargers_2">Chargers_2</option>
+              <option value="Chargers_3">Chargers_3</option>
+              <option value="Chargers_4">Chargers_4</option>
+              <option value="Chargers_5">Chargers_5</option>
+              <option value="Chargers_6">Chargers_6</option>
+              <option value="Chargers_7">Chargers_7</option>
+              <option value="Chargers_8">Chargers_8</option>
+              <option value="Chargers_9">Chargers_9</option>
+              <option value="Chargers_10">Chargers_10</option>
+              <option value="Heat_1">Heat_1</option>
+              <option value="Heat_2">Heat_2</option>
+              <option value="Heat_3">Heat_3</option>
+              <option value="Heat_4">Heat_4</option>
+              <option value="Heat_5">Heat_5</option>
+              <option value="Heat_6">Heat_6</option>
+              <option value="Heat_7">Heat_7</option>
+              <option value="Heat_8">Heat_8</option>
+              <option value="Heat_9">Heat_9</option>
+              <option value="Heat_10">Heat_10</option>
+              <option value="Wind_1">Wind_1</option>
+              <option value="Wind_2">Wind_2</option>
+              <option value="Wind_3">Wind_3</option>
+              <option value="Wind_4">Wind_4</option>
+              <option value="Wind_5">Wind_5</option>
+              <option value="Wind_6">Wind_6</option>
+              <option value="Wind_7">Wind_7</option>
+              <option value="Wind_8">Wind_8</option>
+              <option value="Wind_9">Wind_9</option>
+              <option value="Wind_10">Wind_10</option>
+            </select>
+            <small style="color: #666;">Vælg systemtype for gruppen</small>
+          </div>
+
+          <div class="form-group">
             <label for="multi_server_unit_id">Server Unit ID * (1-200)</label>
             <input type="number" id="multi_server_unit_id" name="multi_server_unit_id" required min="1" max="200" placeholder="f.eks. 15"
               oninput="validateMultiServerUnitId()">
@@ -783,9 +903,7 @@
           </div>
 
           <div class="form-group">
-            <label for="multi_group_data_collection">Group Data Collection</label>
-            <input type="text" id="multi_group_data_collection" name="multi_group_data_collection" placeholder="Lad stå tomt for auto-generering (project_nr_Device_Name)">
-            <small style="color: #666;">Samlet collection hvor summerede værdier gemmes. Hvis tomt, genereres automatisk som project_nr_Device_Name</small>
+            <!-- Group Data Collection fjernet, genereres automatisk -->
           </div>
         </div>
 
@@ -931,6 +1049,7 @@
       document.getElementById('import_offset').value = '';
       document.getElementById('export_offset').value = '';
       document.getElementById('originalServerUnitId').value = '';
+      document.getElementById('deviceId').value = '';
       document.getElementById('server_unit_id').classList.remove('error');
       document.getElementById('serverUnitIdError').classList.remove('show');
       document.getElementById('submitBtn').disabled = false;
@@ -992,6 +1111,8 @@
 
       // Store original server_unit_id for update
       document.getElementById('originalServerUnitId').value = device.server_unit_id;
+      // Store device id for precise updates
+      document.getElementById('deviceId').value = device._id || '';
       // Store original em_group to preserve it on update
       document.getElementById('originalEmGroup').value = device.em_group || '';
 
@@ -1006,6 +1127,7 @@
     function closeModal() {
       document.getElementById('deviceModal').style.display = 'none';
       document.getElementById('deviceForm').reset();
+      document.getElementById('deviceId').value = '';
     }
 
     // Close modal when clicking outside
@@ -1099,6 +1221,10 @@
 
       if (isEditMode) {
         formData.original_server_unit_id = parseInt(document.getElementById('originalServerUnitId').value);
+        const deviceId = document.getElementById('deviceId').value;
+        if (deviceId) {
+          formData.device_id = deviceId;
+        }
         // Preserve em_group if device was part of one
         const originalEmGroup = document.getElementById('originalEmGroup').value;
         if (originalEmGroup) {
@@ -1132,6 +1258,7 @@
     function deleteDevice(button) {
       const serverUnitId = parseInt(button.getAttribute('data-unit-id'));
       const siteName = button.getAttribute('data-site');
+      const deviceId = button.getAttribute('data-id');
 
       if (!confirm(`Er du sikker på at du vil slette klienten "${siteName}" (Server Unit ID: ${serverUnitId})?`)) {
         return;
@@ -1142,7 +1269,7 @@
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ server_unit_id: serverUnitId })
+        body: JSON.stringify({ server_unit_id: serverUnitId, device_id: deviceId })
       })
         .then(response => response.json())
         .then(data => {
@@ -1474,6 +1601,7 @@
 
       const projectNr = parseInt(document.getElementById('multi_project_nr').value);
       const emGroup = document.getElementById('multi_em_group').value.trim();
+      const groupDeviceName = document.getElementById('multi_group_device_name').value.trim();
       const serverUnitId = parseInt(document.getElementById('multi_server_unit_id').value);
       const multiReading = document.getElementById('multi_reading').value;
       const groupDataCollection = document.getElementById('multi_group_data_collection').value.trim();
@@ -1563,6 +1691,7 @@
           server_unit_id: serverUnitId,
           project_nr: projectNr,
           em_group: emGroup,
+          group_device_name: groupDeviceName,
           group_data_collection: groupDataCollection,
           registers: registers
         };
@@ -1828,13 +1957,14 @@
     function deleteEmGroup(button) {
       const unitId = button.getAttribute('data-unit-id');
       const site = button.getAttribute('data-site');
+      const emGroup = button.getAttribute('data-em-group') || '';
       
       if (confirm(`Er du sikker på at du vil slette hele EM gruppen "${site}" (${unitId})?\n\nDette vil slette alle enheder i gruppen!`)) {
         // Delete all devices with this server_unit_id and em_group
-        fetch('/delete_device', {
+        fetch('/delete_em_group', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ server_unit_id: parseInt(unitId) })
+          body: JSON.stringify({ server_unit_id: parseInt(unitId), em_group: emGroup })
         })
         .then(response => response.json())
         .then(data => {

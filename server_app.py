@@ -12,6 +12,7 @@ import struct
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
+from bson import ObjectId
 import random
 import socket
 
@@ -64,7 +65,7 @@ def get_config():
         em_groups_by_unit_id = {}  # Track EM groups by server_unit_id
         
         # First pass: collect EM groups
-        for device in devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "site": 1, "name": 1, "em_group": 1, "group_data_collection": 1}):
+        for device in devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "site": 1, "name": 1, "em_group": 1, "group_data_collection": 1, "group_device_name": 1}):
             if device.get("server_unit_id") is None:
                 continue
             try:
@@ -79,6 +80,7 @@ def get_config():
                     em_groups_by_unit_id[key] = {
                         'em_group': em_group,
                         'group_data_collection': device.get('group_data_collection', ''),
+                        'group_device_name': device.get('group_device_name', ''),
                         'members': []
                     }
                 em_groups_by_unit_id[key]['members'].append({
@@ -99,11 +101,13 @@ def get_config():
             # If this server_unit_id has an EM group, use group info
             if key in em_groups_by_unit_id:
                 group_info = em_groups_by_unit_id[key]
+                group_display_name = group_info.get('group_device_name') or f"EM_GROUP: {group_info['em_group']}"
                 Devices[key] = {
                     'site': group_info['em_group'],  # Use group name as site
-                    'name': f"EM_GROUP: {group_info['em_group']}",  # Mark as EM group
+                    'name': group_display_name,  # Display group device name if provided
                     'is_em_group': True,
                     'group_data_collection': group_info['group_data_collection'],
+                    'group_device_name': group_info.get('group_device_name', ''),
                     'member_count': len(group_info['members'])
                 }
             else:
@@ -157,10 +161,12 @@ server_thread = None
 modbus_context = None  # To store our modbus data
 modbus_server = None  # To store server instance for proper shutdown
 connected_clients = {}  # Dictionary {ip: connection time}
+connected_clients_lock = threading.Lock()
 
 # Configuration for number of slaves and register size
 NUM_SLAVES = 200
-REGISTER_COUNT = 200000  # Must cover address 19026
+# Keep register count just above the highest address we use (19076) to reduce RAM.
+REGISTER_COUNT = 20000
 SPECIAL_REGISTER_ADDRESS = 19026  # The specific register we want to track
 SPECIAL_REGISTER_ADDRESS_1 = 19068  # The specific register we want to track
 SPECIAL_REGISTER_ADDRESS_2 = 19076  # The specific register we want to track
@@ -207,13 +213,15 @@ class CustomRequestHandler(ModbusConnectedRequestHandler):
     def setup(self):
         super().setup()
         ip = self.client_address[0]
-        connected_clients[ip] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with connected_clients_lock:
+            connected_clients[ip] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         #logger.info(f"Client connected: {ip}")
 
     def finish(self):
         ip = self.client_address[0]  # Fixed: use client_address instead of clientaddress
-        if ip in connected_clients:
-            del connected_clients[ip]
+        with connected_clients_lock:
+            if ip in connected_clients:
+                del connected_clients[ip]
         #logger.info(f"Client disconnected: {ip}")
         super().finish()
 
@@ -356,9 +364,12 @@ def index():
     with device_list_lock:
         current_device_list = device_list
 
+    with connected_clients_lock:
+        clients_snapshot = dict(connected_clients)
+
     return render_template("livedat.html",
                            server_status=server_running,
-                           clients=connected_clients,
+                           clients=clients_snapshot,
                            slave_values=slave_values,
                            sites=current_device_list)
 
@@ -394,7 +405,12 @@ def clients():
         # Use global client
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
-        all_devices = list(devices_collection.find({}, {"_id": 0}))
+        all_devices = list(devices_collection.find({}, {}))
+
+        # Normalize _id to string for JSON/template usage
+        for d in all_devices:
+            if "_id" in d:
+                d["_id"] = str(d["_id"])
         
         # Group EM devices by em_group and server_unit_id
         em_groups = {}  # {(em_group, server_unit_id): [devices]}
@@ -415,14 +431,16 @@ def clients():
         for (em_group, server_unit_id), members in em_groups.items():
             if members:
                 first = members[0]
+                group_display_name = first.get('group_device_name') or f"EM_GROUP: {em_group}"
                 grouped_devices.append({
                     'is_em_group': True,
                     'em_group': em_group,
                     'server_unit_id': server_unit_id,
                     'project_nr': first.get('project_nr'),
                     'site': em_group,
-                    'name': f"EM_GROUP: {em_group}",
+                    'name': group_display_name,
                     'group_data_collection': first.get('group_data_collection'),
+                    'group_device_name': first.get('group_device_name', ''),
                     'members': members,
                     'member_count': len(members)
                 })
@@ -459,7 +477,7 @@ def add_device():
         if has_em_group:
             required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'registers']
         else:
-            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'data_collection', 'registers']
+            required_fields = ['site', 'name', 'ip', 'port', 'unit_id', 'server_unit_id', 'registers']
 
         for field in required_fields:
             # Check both if field exists AND if it has a non-empty value
@@ -475,26 +493,26 @@ def add_device():
         
         # Use group_data_collection PRECISELY as provided, or auto-generate if empty
         if has_em_group:
-            group_data_collection = device_data.get('group_data_collection', '').strip()
-            if not group_data_collection or group_data_collection.lower() == 'undefined':
-                # Auto-generate as project_nr_Device_Name only if completely empty
-                project_nr = str(device_data.get('project_nr', '')).strip()
-                device_name = str(device_data.get('em_group', '')).strip()
-                if not device_name:
-                    device_name = str(device_data.get('name', '')).strip()
-                
-                # Clean device name: remove special characters, keep only alphanumeric and underscore
-                device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
-                
-                if project_nr:
-                    device_data['group_data_collection'] = f"{project_nr}_{device_name_clean}"
-                else:
-                    device_data['group_data_collection'] = device_name_clean
-                logger.info(f"Auto-generated group_data_collection: {device_data['group_data_collection']}")
+            project_nr = str(device_data.get('project_nr', '')).strip()
+            device_name = str(device_data.get('em_group', '')).strip()
+            if not device_name:
+                device_name = str(device_data.get('name', '')).strip()
+            device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
+            if project_nr:
+                device_data['group_data_collection'] = f"{project_nr}_{device_name_clean}"
             else:
-                # Use the EXACT value provided by user - no modifications
-                device_data['group_data_collection'] = group_data_collection
-                logger.info(f"Using provided group_data_collection: {group_data_collection}")
+                device_data['group_data_collection'] = device_name_clean
+            logger.info(f"Auto-generated group_data_collection: {device_data['group_data_collection']}")
+        else:
+            # For single devices, always auto-generate data_collection
+            project_nr = str(device_data.get('project_nr', '')).strip()
+            device_name = str(device_data.get('name', '')).strip()
+            device_name_clean = "".join(c if c.isalnum() or c == "_" else "_" for c in device_name.replace(" ", "_"))
+            if project_nr:
+                device_data['data_collection'] = f"{project_nr}_{device_name_clean}"
+            else:
+                device_data['data_collection'] = device_name_clean
+            logger.info(f"Auto-generated data_collection: {device_data['data_collection']}")
 
         # Validate server_unit_id range (1-200, matching NUM_SLAVES)
         try:
@@ -535,6 +553,29 @@ def add_device():
                         'error': f'Server Unit ID {server_unit_id} is already used by EM group "{existing_group}". Cannot use same ID for different EM group "{device_data.get("em_group")}"'
                     }), 400
 
+        # Enforce consistent group_data_collection within the same EM group
+        if has_em_group:
+            group_devices = list(devices_collection.find(
+                {"server_unit_id": server_unit_id, "em_group": device_data.get('em_group')},
+                {"_id": 0, "group_data_collection": 1}
+            ))
+            existing_gdc = None
+            for d in group_devices:
+                if d.get("group_data_collection"):
+                    existing_gdc = str(d["group_data_collection"]).strip()
+                    break
+
+            incoming_gdc = str(device_data.get("group_data_collection", "")).strip()
+            if existing_gdc:
+                if incoming_gdc and incoming_gdc != existing_gdc:
+                    return jsonify({
+                        'success': False,
+                        'error': f'group_data_collection mismatch for EM group "{device_data.get("em_group")}". Use "{existing_gdc}"'
+                    }), 400
+                # If empty, inherit from existing group
+                if not incoming_gdc:
+                    device_data["group_data_collection"] = existing_gdc
+
         devices_collection.insert_one(device_data)
         logger.info(f"Successfully added new device: {device_data.get('site')}")
 
@@ -556,18 +597,21 @@ def update_device():
     try:
         device_data = request.get_json()
         original_server_unit_id = device_data.get('original_server_unit_id')
+        device_id = device_data.get('device_id')
 
-        if not original_server_unit_id:
-            return jsonify({'success': False, 'error': 'Missing original server_unit_id'}), 400
+        if not device_id and not original_server_unit_id:
+            return jsonify({'success': False, 'error': 'Missing device_id or original server_unit_id'}), 400
 
-        # Convert to int for consistent comparison
-        try:
-            original_server_unit_id = int(original_server_unit_id)
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'Invalid original_server_unit_id format'}), 400
+        # Convert to int for consistent comparison (only if provided)
+        if original_server_unit_id is not None:
+            try:
+                original_server_unit_id = int(original_server_unit_id)
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'Invalid original_server_unit_id format'}), 400
 
-        # Remove the original_server_unit_id from device_data before updating
+        # Remove helper fields before updating
         device_data.pop('original_server_unit_id', None)
+        device_data.pop('device_id', None)
 
         # Normalize/validate read type (holding/input). Default is holding.
         reading = str(device_data.get('reading') or device_data.get('table') or 'holding').strip().lower()
@@ -613,20 +657,27 @@ def update_device():
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
 
-        # Find the device being updated
-        existing = devices_collection.find_one({"server_unit_id": original_server_unit_id})
+        # Find the device being updated (prefer device_id when provided)
+        existing = None
+        if device_id:
+            try:
+                existing = devices_collection.find_one({"_id": ObjectId(str(device_id))})
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid device_id'}), 400
+        if existing is None and original_server_unit_id is not None:
+            existing = devices_collection.find_one({"server_unit_id": original_server_unit_id})
         if not existing:
             return jsonify({'success': False, 'error': 'Device not found'}), 404
 
         # Check if new server_unit_id conflicts with another device
-        if new_server_unit_id != original_server_unit_id:
+        if original_server_unit_id is not None and new_server_unit_id != original_server_unit_id:
             existing_em_group = existing.get('em_group')
             new_em_group = device_data.get('em_group')
             
             # Find all devices using the new server_unit_id
             conflicting_devices = list(devices_collection.find(
                 {"server_unit_id": new_server_unit_id},
-                {"_id": 1, "em_group": 1, "site": 1, "name": 1}
+                {"_id": 1, "em_group": 1, "site": 1, "name": 1, "group_data_collection": 1}
             ))
             
             # Filter out the device we're updating (if it exists in the list)
@@ -651,6 +702,31 @@ def update_device():
                         'success': False,
                         'error': f'Server Unit ID {new_server_unit_id} is already used by EM group "{conflict_group}". Cannot use same ID for different EM group'
                     }), 400
+
+        # Enforce consistent group_data_collection within the same EM group
+        if has_em_group:
+            group_devices = list(devices_collection.find(
+                {"server_unit_id": new_server_unit_id, "em_group": device_data.get('em_group')},
+                {"_id": 1, "group_data_collection": 1}
+            ))
+            # Exclude current device
+            group_devices = [d for d in group_devices if d.get('_id') != existing.get('_id')]
+
+            existing_gdc = None
+            for d in group_devices:
+                if d.get("group_data_collection"):
+                    existing_gdc = str(d["group_data_collection"]).strip()
+                    break
+
+            incoming_gdc = str(device_data.get("group_data_collection", "")).strip()
+            if existing_gdc:
+                if incoming_gdc and incoming_gdc != existing_gdc:
+                    return jsonify({
+                        'success': False,
+                        'error': f'group_data_collection mismatch for EM group "{device_data.get("em_group")}". Use "{existing_gdc}"'
+                    }), 400
+                if not incoming_gdc:
+                    device_data["group_data_collection"] = existing_gdc
 
         device_data['_id'] = existing['_id']
         res = devices_collection.replace_one({"_id": existing["_id"]}, device_data)
@@ -743,15 +819,22 @@ def delete_device():
     try:
         data = request.get_json()
         server_unit_id = data.get('server_unit_id')
+        device_id = data.get('device_id')
 
-        if not server_unit_id:
-            return jsonify({'success': False, 'error': 'Missing server_unit_id'}), 400
+        if not device_id and not server_unit_id:
+            return jsonify({'success': False, 'error': 'Missing device_id or server_unit_id'}), 400
 
         # Connect to MongoDB using global client
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
 
-        result = devices_collection.delete_one({"server_unit_id": server_unit_id})
+        if device_id:
+            try:
+                result = devices_collection.delete_one({"_id": ObjectId(str(device_id))})
+            except Exception:
+                return jsonify({'success': False, 'error': 'Invalid device_id'}), 400
+        else:
+            result = devices_collection.delete_one({"server_unit_id": server_unit_id})
 
         if result.deleted_count > 0:
             logger.info(f"Successfully deleted device with server_unit_id: {server_unit_id}")
@@ -767,6 +850,43 @@ def delete_device():
         logger.error(f"Error deleting device: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/delete_em_group', methods=['POST'])
+def delete_em_group():
+    """Delete all devices in an EM group (by server_unit_id + em_group)."""
+    try:
+        data = request.get_json()
+        server_unit_id = data.get('server_unit_id')
+        em_group = data.get('em_group')
+
+        if not server_unit_id or not em_group:
+            return jsonify({'success': False, 'error': 'Missing server_unit_id or em_group'}), 400
+
+        # Ensure server_unit_id is an integer
+        try:
+            server_unit_id = int(server_unit_id)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid server_unit_id format'}), 400
+
+        db = mongo_client[MONGO_DB]
+        devices_collection = db[MONGO_COLLECTION]
+
+        result = devices_collection.delete_many({
+            "server_unit_id": server_unit_id,
+            "em_group": em_group
+        })
+
+        # Update device list immediately
+        global device_list
+        new_device_list = get_config()
+        with device_list_lock:
+            device_list = new_device_list
+
+        return jsonify({'success': True, 'deleted_count': result.deleted_count}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting EM group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/get_all_devices', methods=['GET'])
 def get_all_devices():
     """Get all devices from MongoDB configuration"""
@@ -775,7 +895,10 @@ def get_all_devices():
         db = mongo_client[MONGO_DB]
         devices_collection = db[MONGO_COLLECTION]
 
-        devices = list(devices_collection.find({}, {"_id": 0, "server_unit_id": 1, "em_group": 1, "site": 1}))
+        devices = list(devices_collection.find({}, {"server_unit_id": 1, "em_group": 1, "site": 1}))
+        for d in devices:
+            if "_id" in d:
+                d["_id"] = str(d["_id"])
         return jsonify({'success': True, 'devices': devices}), 200
 
     except Exception as e:
@@ -816,11 +939,14 @@ def health():
         except Exception:
             pass  # service_events might not exist yet
 
+        with connected_clients_lock:
+            clients_count = len(connected_clients)
+
         return render_template('health.html',
                                mongo_status=mongo_status,
                                modbus_status="Kører" if server_running else "Stoppet",
                                device_count=device_count,
-                               connected_clients=len(connected_clients),
+                               connected_clients=clients_count,
                                recent_errors=recent_errors)
 
     except Exception as e:
@@ -841,12 +967,15 @@ def health_json():
         devices_collection = db[MONGO_COLLECTION]
         device_count = devices_collection.count_documents({})
 
+        with connected_clients_lock:
+            clients_count = len(connected_clients)
+
         return jsonify({
             'status': 'healthy' if mongo_ok else 'degraded',
             'mongodb': 'connected' if mongo_ok else 'disconnected',
             'modbus_server': 'running' if server_running else 'stopped',
             'device_count': device_count,
-            'connected_clients': len(connected_clients),
+            'connected_clients': clients_count,
             'timestamp': datetime.now().isoformat()
         }), 200
 

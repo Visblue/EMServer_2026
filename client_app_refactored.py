@@ -60,7 +60,7 @@ logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 
 SLEEP_SECONDS_RANGE = (2, 3)  # seconds between polls per device (target interval)
 DB_SAVE_INTERVAL_SECONDS = 30
-CONFIG_RELOAD_INTERVAL_SECONDS = 120  # 5 minutes
+CONFIG_RELOAD_INTERVAL_SECONDS = 120  # 2 minutes
 
 MAX_REASONABLE_DIFF_WH = 500_000    # spikes above this are rejected
 MAX_REASONABLE_DIFF_WH_EM_GROUP = 1_000_000  # Higher tolerance for EM groups (sum of multiple meters)
