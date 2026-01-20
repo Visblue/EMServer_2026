@@ -72,6 +72,11 @@ MAX_TOTAL_RESET_THRESHOLD = 0.5  # meter reset if new < 50% of old
 BACKOFF_MIN_SECONDS = 60
 BACKOFF_MAX_SECONDS = 360
 
+# Optional per-site debug (to trace specific problematic sites end-to-end).
+# Example: "10810 Bakkegården" grid meter.
+DEBUG_SITES: set[str] = {"10810 Bakkegården"}
+DEBUG_SERVER_UNIT_IDS: set[int] = {35}
+
 # Modbus register addresses used on the "server" side.
 SERVER_REGISTERS = {
     "active_power": 19026,
@@ -916,6 +921,13 @@ class DevicePoller:
     def poll_once(self, state: DeviceState) -> None:
         now = time.time()
         if now < state.backoff_until:
+            # Debug: vis at vi skipper polls for bestemte sites (fx Bakkegården) pga. backoff.
+            if state.site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
+                try:
+                    remaining = max(0.0, state.backoff_until - now)
+                    print(f"[DEBUG-BKG] Skipper poll for {state.site} (server_unit_id={state.server_unit_id}) pga. backoff, {remaining:.1f}s tilbage")
+                except Exception:
+                    pass
             return
 
         site = state.site
@@ -956,6 +968,12 @@ class DevicePoller:
 
         # Read values.
         try:
+            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
+                try:
+                    print(f"[DEBUG-BKG] Starter read for {site} (server_unit_id={state.server_unit_id}, interval={actual_interval:.2f}s)")
+                except Exception:
+                    pass
+
             ap, total_imp, total_exp, meta = self._energy_reader.read(
                 state.device_reader,
                 dev,
@@ -965,6 +983,17 @@ class DevicePoller:
                 first_read=state.first_read,
             )
             state.first_read = False
+
+            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
+                try:
+                    print(
+                        f"[DEBUG-BKG] Read OK for {site}: "
+                        f"AP={ap:.2f}W, Total_Imp={total_imp:.3f}Wh, Total_Exp={total_exp:.3f}Wh, "
+                        f"flags: AP_invalid={meta.active_power_invalid}, "
+                        f"Imp_invalid={meta.import_invalid}, Exp_invalid={meta.export_invalid}"
+                    )
+                except Exception:
+                    pass
         except ModbusException as e:
             # Mere detaljeret info om hvor fejlen opstod (hjælper ved fx enkelte sites som Bakkegården).
             dev_ip = dev.get("ip", "unknown")
@@ -990,6 +1019,15 @@ class DevicePoller:
         # Write values to server.
         try:
             assert state.server_reader is not None
+            if site in DEBUG_SITES or state.server_unit_id in DEBUG_SERVER_UNIT_IDS:
+                try:
+                    print(
+                        f"[DEBUG-BKG] Skriver til server for {site} (server_unit_id={state.server_unit_id}): "
+                        f"AP={ap:.2f}W, Total_Imp={total_imp:.3f}Wh, Total_Exp={total_exp:.3f}Wh"
+                    )
+                except Exception:
+                    pass
+
             safe_write_float32(state.server_reader, ap, "active_power", state.server_unit_id)
             if abs(total_imp - state.last_import) > FLOAT_TOLERANCE_WH:
                 safe_write_float32(state.server_reader, total_imp, "total_import", state.server_unit_id)
