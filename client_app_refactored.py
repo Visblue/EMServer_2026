@@ -73,8 +73,8 @@ BACKOFF_MIN_SECONDS = 60
 BACKOFF_MAX_SECONDS = 360
 
 # Optional per-site debug (to trace specific problematic sites end-to-end).
-# Example: "10810 Bakkegården" grid meter.
-DEBUG_SITES: set[str] = {"10810 Bakkegården"}
+# Her bruger vi kun server_unit_id for at skelne mellem EM_1 (35) og PV_1 (120) på Bakkegården.
+DEBUG_SITES: set[str] = set()
 DEBUG_SERVER_UNIT_IDS: set[int] = {35}
 
 # Modbus register addresses used on the "server" side.
