@@ -1072,7 +1072,6 @@
       document.getElementById('reading').value = (device.reading || device.table || 'holding');
       document.getElementById('unit_id').value = device.unit_id;
       document.getElementById('server_unit_id').value = device.server_unit_id;
-      document.getElementById('data_collection').value = device.data_collection;
       document.getElementById('register_address').value = device.registers.active_power.address;
       document.getElementById('register_reading').value = (device.registers.active_power.reading || device.registers.active_power.table || device.reading || device.table || 'holding');
       document.getElementById('register_format').value = device.registers.active_power.format;
@@ -1155,7 +1154,6 @@
         reading: document.getElementById('reading').value,
         unit_id: parseInt(document.getElementById('unit_id').value),
         server_unit_id: parseInt(document.getElementById('server_unit_id').value),
-        data_collection: document.getElementById('data_collection').value,
         registers: {
           active_power: {
             address: parseInt(document.getElementById('register_address').value),
@@ -1604,7 +1602,6 @@
       const groupDeviceName = document.getElementById('multi_group_device_name').value.trim();
       const serverUnitId = parseInt(document.getElementById('multi_server_unit_id').value);
       const multiReading = document.getElementById('multi_reading').value;
-      const groupDataCollection = document.getElementById('multi_group_data_collection').value.trim();
 
       // Validate server_unit_id range
       if (serverUnitId < 1 || serverUnitId > 200) {
@@ -1692,7 +1689,6 @@
           project_nr: projectNr,
           em_group: emGroup,
           group_device_name: groupDeviceName,
-          group_data_collection: groupDataCollection,
           registers: registers
         };
 

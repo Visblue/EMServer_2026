@@ -165,8 +165,10 @@ connected_clients_lock = threading.Lock()
 
 # Configuration for number of slaves and register size
 NUM_SLAVES = 200
-# Keep register count just above the highest address we use (19076) to reduce RAM.
-REGISTER_COUNT = 20000
+# Holding registers need to cover at least the highest address we use (19076).
+# Keep a small margin above that, but avoid allocating huge blocks for all types.
+HR_REGISTER_COUNT = 19100     # Holding Registers (3 / function code 3)
+AUX_REGISTER_COUNT = 16       # Small blocks for DI/CO/IR – we do not use them
 SPECIAL_REGISTER_ADDRESS = 19026  # The specific register we want to track
 SPECIAL_REGISTER_ADDRESS_1 = 19068  # The specific register we want to track
 SPECIAL_REGISTER_ADDRESS_2 = 19076  # The specific register we want to track
@@ -253,10 +255,12 @@ def create_modbus_context():
     try:
         for slave_id in range(1, NUM_SLAVES + 1):
             store = ModbusSlaveContext(
-                di=ModbusSequentialDataBlock(0, [0] * REGISTER_COUNT),  # Discrete Inputs
-                co=ModbusSequentialDataBlock(0, [0] * REGISTER_COUNT),  # Coils
-                hr=ModbusSequentialDataBlock(0, [0] * REGISTER_COUNT),  # Holding Registers
-                ir=ModbusSequentialDataBlock(0, [0] * REGISTER_COUNT)   # Input Registers
+                # We only actively use holding registers (hr) around address 19026–19076.
+                # To reduce memory usage, keep DI/CO/IR very small.
+                di=ModbusSequentialDataBlock(0, [0] * AUX_REGISTER_COUNT),  # Discrete Inputs
+                co=ModbusSequentialDataBlock(0, [0] * AUX_REGISTER_COUNT),  # Coils
+                hr=ModbusSequentialDataBlock(0, [0] * HR_REGISTER_COUNT),   # Holding Registers
+                ir=ModbusSequentialDataBlock(0, [0] * AUX_REGISTER_COUNT)   # Input Registers
             )
             # Write the generated registers starting at address 911
             store.setValues(3, 911, write_serial_server())

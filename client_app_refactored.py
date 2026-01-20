@@ -445,7 +445,7 @@ class ModbusReader(ModbusCodec):
             raise ModbusException(f"Write error at {address}")
 
 
-def connect_modbus(ip: str, port: int, timeout_seconds: int = 1) -> Optional[ModbusTcpClient]:
+def connect_modbus(ip: str, port: int, timeout_seconds: int = 3) -> Optional[ModbusTcpClient]:
     """Connect to a Modbus TCP endpoint and return the client (or None)."""
 
     try:
